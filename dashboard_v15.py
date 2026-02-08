@@ -485,12 +485,95 @@ class DashboardApp:
             task = self.tasks[self.task_selected]
             task_id = task.get('id')
             if task_id and not task.get('done'):
+                # Save to undo stack before completing
+                if not hasattr(self, 'undo_stack'):
+                    self.undo_stack = []
+                self.undo_stack.append({
+                    'action': 'complete',
+                    'task_id': task_id,
+                    'task': task.copy(),
+                    'index': self.task_selected
+                })
+                # Keep stack limited
+                if len(self.undo_stack) > 20:
+                    self.undo_stack.pop(0)
+                
                 # Complete in Todoist
                 if self._todoist_complete_task(task_id):
+                    # Add to completed list for viewing
+                    if not hasattr(self, 'completed_tasks'):
+                        self.completed_tasks = []
+                    completed_task = task.copy()
+                    completed_task['completed_at'] = time.time()
+                    self.completed_tasks.insert(0, completed_task)
+                    # Keep only last 20 completed
+                    self.completed_tasks = self.completed_tasks[:20]
+                    
                     # Remove from local list
                     self.tasks.pop(self.task_selected)
                     if self.task_selected >= len(self.tasks) and self.tasks:
                         self.task_selected = len(self.tasks) - 1
+    
+    def undo_last_action(self):
+        """Undo the last task action"""
+        if not hasattr(self, 'undo_stack') or not self.undo_stack:
+            return False
+        
+        action = self.undo_stack.pop()
+        
+        if action['action'] == 'complete':
+            # Reopen the task
+            task_id = action['task_id']
+            if self._todoist_reopen_task(task_id):
+                # Add back to list
+                task = action['task']
+                idx = min(action['index'], len(self.tasks))
+                self.tasks.insert(idx, task)
+                self.task_selected = idx
+                return True
+        return False
+    
+    def _todoist_reopen_task(self, task_id):
+        """Reopen a completed task in Todoist"""
+        try:
+            self.todoist_sync_status = 'syncing'
+            result = subprocess.run(
+                ['todoist', 'reopen', str(task_id)],
+                capture_output=True, text=True, timeout=10
+            )
+            if result.returncode == 0:
+                self.todoist_sync_status = 'live'
+                return True
+            else:
+                self.todoist_sync_status = 'error'
+                return False
+        except:
+            self.todoist_sync_status = 'error'
+            return False
+    
+    def _load_completed_tasks(self):
+        """Load recently completed tasks"""
+        try:
+            # Note: todoist CLI may not support this directly
+            # For now, store completed tasks locally when they're completed
+            if not hasattr(self, 'completed_tasks'):
+                self.completed_tasks = []
+        except:
+            pass
+    
+    def _uncomplete_selected_task(self):
+        """Uncomplete the selected completed task"""
+        if not getattr(self, 'show_completed', False):
+            return
+        completed = getattr(self, 'completed_tasks', [])
+        if completed and 0 <= self.task_selected < len(completed):
+            task = completed[self.task_selected]
+            task_id = task.get('id')
+            if task_id and self._todoist_reopen_task(task_id):
+                completed.pop(self.task_selected)
+                self._load_todoist_tasks()
+                if self.task_selected >= len(completed):
+                    self.task_selected = max(0, len(completed) - 1)
             
     def cycle_task_priority(self):
         """Cycle priority of selected task (1 -> 2 -> 3 -> 4 -> 1)"""
@@ -548,6 +631,38 @@ class DashboardApp:
         except:
             pass
         return ""
+    
+    def _get_gateway_status(self):
+        """Check if gateway is connected"""
+        # Cache result for 5 seconds
+        now = time.time()
+        if hasattr(self, '_gw_status_cache') and now - self._gw_status_time < 5:
+            return self._gw_status_cache
+        
+        try:
+            result = subprocess.run(
+                ['systemctl', '--user', 'is-active', 'openclaw-gateway'],
+                capture_output=True, text=True, timeout=2
+            )
+            connected = result.stdout.strip() == 'active'
+            self._gw_status_cache = {'connected': connected}
+            self._gw_status_time = now
+            return self._gw_status_cache
+        except:
+            return {'connected': False}
+    
+    def _toggle_gateway(self):
+        """Connect or disconnect gateway"""
+        status = self._get_gateway_status()
+        if status.get('connected'):
+            # Disconnect
+            subprocess.run(['systemctl', '--user', 'stop', 'openclaw-gateway'], timeout=5)
+        else:
+            # Connect
+            subprocess.run(['systemctl', '--user', 'start', 'openclaw-gateway'], timeout=5)
+        # Clear cache
+        if hasattr(self, '_gw_status_cache'):
+            del self._gw_status_cache
         
     def load_weather(self):
         if self.weather_loading:
@@ -813,20 +928,20 @@ class DashboardApp:
                 'category': 'safe'
             },
             {
-                'label': 'Node Status',
-                'desc': 'Check connection to gateway',
-                'cmd': 'openclaw nodes status',
+                'label': 'System',
+                'desc': 'System tools & diagnostics',
+                'cmd': '__system_menu__',
                 'icon': '2',
                 'color': C['accent'],
-                'category': 'safe'
+                'category': 'submenu'
             },
             {
-                'label': 'Disk Space',
-                'desc': 'View storage usage',
-                'cmd': "df -h / | awk 'NR==2 {print $3 \"/\" $2 \" (\" $5 \" used)\"}'",
+                'label': '—',
+                'desc': 'Empty slot',
+                'cmd': '__none__',
                 'icon': '3',
-                'color': C['accent'],
-                'category': 'safe'
+                'color': (60, 65, 80),
+                'category': 'disabled'
             },
             {
                 'label': 'Screen Off',
@@ -837,18 +952,10 @@ class DashboardApp:
                 'category': 'safe'
             },
             {
-                'label': 'Restart Gateway',
-                'desc': 'Restart OpenClaw service',
-                'cmd': 'systemctl --user restart openclaw-gateway',
-                'icon': '5',
-                'color': C['warning'],
-                'category': 'caution'
-            },
-            {
                 'label': 'Update System',
                 'desc': 'Pull latest code & install',
                 'cmd': 'cd ~/.openclaw && git pull && npm install',
-                'icon': '6',
+                'icon': '5',
                 'color': C['warning'],
                 'category': 'caution'
             },
@@ -856,7 +963,7 @@ class DashboardApp:
                 'label': 'Reboot Pi',
                 'desc': 'Restart the entire system',
                 'cmd': 'sudo reboot',
-                'icon': '7',
+                'icon': '6',
                 'color': C['error'],
                 'category': 'danger'
             },
@@ -864,10 +971,21 @@ class DashboardApp:
                 'label': 'Shutdown',
                 'desc': 'Power off completely',
                 'cmd': 'sudo shutdown -h now',
-                'icon': '8',
+                'icon': '7',
                 'color': C['error'],
                 'category': 'danger'
             },
+        ]
+    
+    def get_system_submenu(self):
+        """Return system submenu items"""
+        return [
+            {'label': 'Node Test', 'cmd': 'openclaw nodes status', 'icon': '1'},
+            {'label': 'Gateway Test', 'cmd': 'openclaw gateway status', 'icon': '2'},
+            {'label': 'Disk Space', 'cmd': "df -h / | awk 'NR==2 {print $3 \"/\" $2 \" (\" $5 \" used)\"}'", 'icon': '3'},
+            {'label': 'Gateway Restart', 'cmd': 'systemctl --user restart openclaw-gateway', 'icon': '4'},
+            {'label': 'Memory Usage', 'cmd': "free -h | awk 'NR==2 {print $3 \"/\" $2}'", 'icon': '5'},
+            {'label': 'CPU Temp', 'cmd': "vcgencmd measure_temp | cut -d= -f2", 'icon': '6'},
         ]
         
     def execute_command(self, cmd_idx):
@@ -885,6 +1003,16 @@ class DashboardApp:
             if cmd['cmd'] == '__restart_dashboard__':
                 pygame.quit()
                 os.execv(sys.executable, [sys.executable] + sys.argv)
+                return
+            
+            # Special handling for system submenu
+            if cmd['cmd'] == '__system_menu__':
+                self.system_submenu_open = True
+                self.system_submenu_selection = 0
+                return
+            
+            # Disabled slots do nothing
+            if cmd['cmd'] == '__none__':
                 return
             
             # Safe commands run immediately, others need confirmation
@@ -1113,13 +1241,26 @@ class DashboardApp:
         val = self.fonts['title'].render(display_name, True, C['text_bright'])
         self.screen.blit(val, (36, card_y + 36))
         
-        # Gateway card
+        # Gateway card - check actual status
+        gw_status = self._get_gateway_status()
+        gw_connected = gw_status.get('connected', False)
+        gw_color = C['success'] if gw_connected else C['error']
+        gw_text = "● Online" if gw_connected else "○ Offline"
+        
         pygame.draw.rect(self.screen, C['bg_item'], (20 + card_w + gap, card_y, card_w, card_h), border_radius=12)
-        pygame.draw.rect(self.screen, C['success'], (20 + card_w + gap, card_y, 5, card_h), border_radius=2)
+        pygame.draw.rect(self.screen, gw_color, (20 + card_w + gap, card_y, 5, card_h), border_radius=2)
         label = self.fonts['status'].render("GATEWAY", True, C['text_muted'])
         self.screen.blit(label, (36 + card_w + gap, card_y + 12))
-        val = self.fonts['title'].render("● Online", True, C['success'])
+        val = self.fonts['title'].render(gw_text, True, gw_color)
         self.screen.blit(val, (36 + card_w + gap, card_y + 36))
+        
+        # Show connect/disconnect hint
+        if gw_connected:
+            hint_text = "[G] Disconnect"
+        else:
+            hint_text = "[G] Connect"
+        hint_surf = self.fonts['status'].render(hint_text, True, C['text_muted'])
+        self.screen.blit(hint_surf, (36 + card_w + gap + 120, card_y + 40))
         
         # Tasks card
         task_count = len([t for t in self.tasks if not t.get('done')]) if self.tasks else 0
@@ -1673,11 +1814,63 @@ class DashboardApp:
                 warn_surf = self.fonts['title'].render("!", True, (40, 40, 40))
                 self.screen.blit(warn_surf, (badge_x - warn_surf.get_width() // 2, badge_y - warn_surf.get_height() // 2))
         
+        # System Submenu overlay
+        if getattr(self, 'system_submenu_open', False):
+            self._draw_system_submenu()
+        
         # Footer
         help_text = "1-8: Quick Run  |  Arrows: Navigate  |  Enter: Execute"
         help_surf = self.fonts['status'].render(help_text, True, C['text_muted'])
         help_x = (SCREEN_WIDTH - help_surf.get_width()) // 2
         self.screen.blit(help_surf, (help_x, SCREEN_HEIGHT - 18))
+    
+    def _draw_system_submenu(self):
+        """Draw system submenu popup"""
+        # Dim background
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        self.screen.blit(overlay, (0, 0))
+        
+        submenu = self.get_system_submenu()
+        selection = getattr(self, 'system_submenu_selection', 0)
+        
+        # Popup box
+        box_w, box_h = 350, 40 + len(submenu) * 45
+        box_x = (SCREEN_WIDTH - box_w) // 2
+        box_y = (SCREEN_HEIGHT - box_h) // 2
+        
+        pygame.draw.rect(self.screen, (35, 40, 55), (box_x, box_y, box_w, box_h), border_radius=12)
+        pygame.draw.rect(self.screen, C['accent'], (box_x, box_y, box_w, box_h), width=2, border_radius=12)
+        
+        # Title
+        title_surf = self.fonts['msg'].render("System Tools", True, C['accent'])
+        self.screen.blit(title_surf, (box_x + (box_w - title_surf.get_width()) // 2, box_y + 10))
+        
+        # Items
+        item_y = box_y + 45
+        for i, item in enumerate(submenu):
+            is_selected = i == selection
+            
+            # Highlight selected
+            if is_selected:
+                pygame.draw.rect(self.screen, (50, 55, 75), (box_x + 10, item_y - 5, box_w - 20, 38), border_radius=8)
+                pygame.draw.rect(self.screen, C['accent'], (box_x + 10, item_y - 5, 4, 38), border_radius=2)
+            
+            # Number
+            num_color = C['accent'] if is_selected else (100, 105, 125)
+            num_surf = self.fonts['status'].render(f"[{item['icon']}]", True, num_color)
+            self.screen.blit(num_surf, (box_x + 20, item_y + 5))
+            
+            # Label
+            label_color = (235, 240, 255) if is_selected else (180, 185, 200)
+            label_surf = self.fonts['msg'].render(item['label'], True, label_color)
+            self.screen.blit(label_surf, (box_x + 55, item_y + 3))
+            
+            item_y += 45
+        
+        # Hint
+        hint_surf = self.fonts['status'].render("1-6 Quick • Arrows • Enter • Esc", True, (100, 105, 125))
+        self.screen.blit(hint_surf, (box_x + (box_w - hint_surf.get_width()) // 2, box_y + box_h - 25))
     
     def _draw_command_running(self):
         """Draw running command indicator"""
@@ -3171,7 +3364,9 @@ class DashboardApp:
                 return
                 
         # Mode-specific
-        if self.mode == MODE_CHAT:
+        if self.mode == MODE_DASHBOARD:
+            self._handle_dashboard_key(event)
+        elif self.mode == MODE_CHAT:
             self._handle_chat_key(event)
         elif self.mode == MODE_COMMANDS:
             self._handle_commands_key(event)
@@ -3179,6 +3374,12 @@ class DashboardApp:
             self._handle_tasks_key(event)
         elif self.mode == MODE_KANBAN:
             self._handle_kanban_key(event)
+    
+    def _handle_dashboard_key(self, event):
+        """Handle keyboard input for dashboard"""
+        if event.key == pygame.K_g:
+            # Toggle gateway connection
+            self._toggle_gateway()
                 
     def _handle_chat_key(self, event):
         if self.chat_menu_open:
@@ -3600,6 +3801,18 @@ class DashboardApp:
             elif event.key == pygame.K_r:
                 # Manual refresh
                 self._load_todoist_tasks()
+            elif event.key == pygame.K_z and (event.mod & pygame.KMOD_CTRL):
+                # Undo last action
+                self.undo_last_action()
+            elif event.key == pygame.K_c:
+                # Toggle completed tasks view
+                self.show_completed = not getattr(self, 'show_completed', False)
+                if self.show_completed:
+                    self._load_completed_tasks()
+            elif event.key == pygame.K_u:
+                # Uncomplete selected task (if viewing completed)
+                if getattr(self, 'show_completed', False):
+                    self._uncomplete_selected_task()
             elif event.key == pygame.K_TAB:
                 # Cycle filter through all 5 options
                 filters = ['all', 'inbox', 'salon', 'today', 'overdue']
@@ -3633,6 +3846,31 @@ class DashboardApp:
                 self.delete_task()
                 
     def _handle_commands_key(self, event):
+        # Handle system submenu
+        if getattr(self, 'system_submenu_open', False):
+            submenu = self.get_system_submenu()
+            if event.key == pygame.K_ESCAPE:
+                self.system_submenu_open = False
+            elif event.key == pygame.K_UP:
+                self.system_submenu_selection = max(0, self.system_submenu_selection - 1)
+            elif event.key == pygame.K_DOWN:
+                self.system_submenu_selection = min(len(submenu) - 1, self.system_submenu_selection + 1)
+            elif event.key == pygame.K_RETURN:
+                item = submenu[self.system_submenu_selection]
+                self.system_submenu_open = False
+                self.command_running = item['label']
+                self.command_result = None
+                threading.Thread(target=self._run_command_async, args=({'cmd': item['cmd'], 'label': item['label']},), daemon=True).start()
+            elif event.key in (pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5, pygame.K_6):
+                idx = event.key - pygame.K_1
+                if idx < len(submenu):
+                    item = submenu[idx]
+                    self.system_submenu_open = False
+                    self.command_running = item['label']
+                    self.command_result = None
+                    threading.Thread(target=self._run_command_async, args=({'cmd': item['cmd'], 'label': item['label']},), daemon=True).start()
+            return
+        
         # Handle confirmation dialog
         if self.command_confirm is not None:
             if event.key == pygame.K_RETURN:

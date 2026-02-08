@@ -3070,41 +3070,123 @@ class DashboardApp:
         self.kanban_data = {k: list(v) for k, v in empty_cols.items()}
         self.kanban_fasttrack = {k: list(v) for k, v in empty_cols.items()}
         
+        # Map from JSON keys to display names
+        col_map = {
+            'not-started': 'Not Started', 'notstarted': 'Not Started', 'Not Started': 'Not Started',
+            'research': 'Research', 'Research': 'Research',
+            'active': 'Active', 'Active': 'Active',
+            'stuck': 'Stuck', 'Stuck': 'Stuck',
+            'review': 'Review', 'Review': 'Review',
+            'implement': 'Implement', 'Implement': 'Implement',
+            'finished': 'Finished', 'Finished': 'Finished'
+        }
+        
+        # Map priority values
+        priority_map = {'red': '🔴', 'yellow': '🟡', 'green': '🟢', '🔴': '🔴', '🟡': '🟡', '🟢': '🟢'}
+        
         board_name = getattr(self, 'kanban_board', 'salon')
         kanban_file = Path.home() / f'.openclaw/workspace/work/kanban/{board_name}.json'
         
         if not kanban_file.exists():
-            # Try to migrate from markdown if it exists
-            md_file = Path.home() / f'.openclaw/workspace/work/kanban/{board_name}.md'
-            if md_file.exists():
-                self._migrate_markdown_to_json(md_file, kanban_file)
             return
         
         try:
             data = json.loads(kanban_file.read_text())
-            for col in self.kanban_data:
-                if col in data.get('columns', {}):
-                    self.kanban_data[col] = data['columns'][col]
-                if col in data.get('fasttrack', {}):
-                    self.kanban_fasttrack[col] = data['fasttrack'][col]
-        except:
+            columns = data.get('columns', {})
+            fasttrack = data.get('fastTrack', data.get('fasttrack', {}))
+            
+            for json_col, cards in columns.items():
+                display_col = col_map.get(json_col, json_col)
+                if display_col in self.kanban_data:
+                    for card in cards:
+                        # Normalize card format
+                        normalized = {
+                            'title': card.get('title', ''),
+                            'description': card.get('description', ''),
+                            'priority': priority_map.get(card.get('priority', 'yellow'), '🟡'),
+                            'due': card.get('due', ''),
+                            'context': card.get('context', []) if isinstance(card.get('context'), list) else card.get('context', ''),
+                            'id': card.get('id', '')
+                        }
+                        self.kanban_data[display_col].append(normalized)
+            
+            for json_col, cards in fasttrack.items():
+                display_col = col_map.get(json_col, json_col)
+                if display_col in self.kanban_fasttrack:
+                    for card in cards:
+                        normalized = {
+                            'title': card.get('title', ''),
+                            'description': card.get('description', ''),
+                            'priority': priority_map.get(card.get('priority', 'yellow'), '🟡'),
+                            'due': card.get('due', ''),
+                            'context': card.get('context', []) if isinstance(card.get('context'), list) else card.get('context', ''),
+                            'id': card.get('id', '')
+                        }
+                        self.kanban_fasttrack[display_col].append(normalized)
+        except Exception as e:
             pass
     
     def _save_kanban_data(self):
-        """Save kanban data to JSON file"""
+        """Save kanban data to JSON file (compatible with web app format)"""
         import json
+        from datetime import datetime
+        
+        # Map display names back to JSON keys
+        col_map = {
+            'Not Started': 'not-started', 'Research': 'research', 'Active': 'active',
+            'Stuck': 'stuck', 'Review': 'review', 'Implement': 'implement', 'Finished': 'finished'
+        }
+        priority_map = {'🔴': 'red', '🟡': 'yellow', '🟢': 'green'}
         
         board_name = getattr(self, 'kanban_board', 'salon')
         kanban_file = Path.home() / f'.openclaw/workspace/work/kanban/{board_name}.json'
-        kanban_file.parent.mkdir(parents=True, exist_ok=True)
         
-        data = {
-            'columns': self.kanban_data,
-            'fasttrack': self.kanban_fasttrack
-        }
+        # Load existing data to preserve structure
+        try:
+            existing = json.loads(kanban_file.read_text())
+        except:
+            existing = {'name': board_name, 'ideas': [], 'archive': {}, 'version': 1}
+        
+        # Convert columns
+        columns = {}
+        for display_col, cards in self.kanban_data.items():
+            json_col = col_map.get(display_col, display_col.lower())
+            columns[json_col] = []
+            for card in cards:
+                json_card = {
+                    'id': card.get('id', ''),
+                    'title': card.get('title', ''),
+                    'priority': priority_map.get(card.get('priority', '🟡'), 'yellow'),
+                    'description': card.get('description', ''),
+                    'due': card.get('due', None),
+                    'context': card.get('context', []),
+                    'columnSince': card.get('columnSince'),
+                    'createdAt': card.get('createdAt'),
+                }
+                columns[json_col].append(json_card)
+        
+        # Convert fast track
+        fasttrack = {}
+        for display_col, cards in self.kanban_fasttrack.items():
+            json_col = col_map.get(display_col, display_col.lower())
+            fasttrack[json_col] = []
+            for card in cards:
+                json_card = {
+                    'id': card.get('id', ''),
+                    'title': card.get('title', ''),
+                    'priority': priority_map.get(card.get('priority', '🟡'), 'yellow'),
+                    'description': card.get('description', ''),
+                    'due': card.get('due', None),
+                    'context': card.get('context', []),
+                }
+                fasttrack[json_col].append(json_card)
+        
+        existing['columns'] = columns
+        existing['fastTrack'] = fasttrack
+        existing['lastModified'] = datetime.now().isoformat() + 'Z'
         
         try:
-            kanban_file.write_text(json.dumps(data, indent=2))
+            kanban_file.write_text(json.dumps(existing, indent=2))
             self.kanban_sync_status = 'live'
         except:
             self.kanban_sync_status = 'error'
@@ -4553,6 +4635,9 @@ class DashboardApp:
     
     def _save_new_card(self):
         """Save new card to JSON"""
+        import uuid
+        from datetime import datetime
+        
         title = getattr(self, 'kanban_new_title', '').strip()
         if not title:
             self.kanban_new_card_mode = False
@@ -4562,13 +4647,17 @@ class DashboardApp:
         context = getattr(self, 'kanban_new_context', '@salon')
         priority = getattr(self, 'kanban_new_priority', '🟡')
         
-        # Create card object
+        # Create card object with proper ID
+        now = datetime.now().isoformat()
         card = {
+            'id': str(uuid.uuid4()),
             'title': title,
             'description': desc,
             'priority': priority,
-            'context': context,
-            'due': ''
+            'context': [context] if context else [],
+            'due': '',
+            'createdAt': now,
+            'columnSince': now
         }
         
         # Add to current column

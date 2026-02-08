@@ -2107,32 +2107,56 @@ class DashboardApp:
         self.screen.blit(hint_surf, ((SCREEN_WIDTH - hint_surf.get_width()) // 2, result_y + 15))
     
     def _draw_priority_confirm(self):
-        """Draw priority change confirmation"""
+        """Draw priority picker - R/Y/G to select"""
         overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 180))
         self.screen.blit(overlay, (0, 0))
         
-        box_w, box_h = 300, 120
+        box_w, box_h = 320, 130
         box_x = (SCREEN_WIDTH - box_w) // 2
         box_y = (SCREEN_HEIGHT - box_h) // 2
         
         pygame.draw.rect(self.screen, (40, 44, 60), (box_x, box_y, box_w, box_h), border_radius=10)
         pygame.draw.rect(self.screen, (150, 120, 50), (box_x, box_y, box_w, box_h), width=2, border_radius=10)
         
-        # Title
-        title_surf = self.fonts['msg'].render("Change Priority?", True, (230, 220, 180))
-        self.screen.blit(title_surf, (box_x + (box_w - title_surf.get_width()) // 2, box_y + 15))
+        # Title with current priority
+        card = getattr(self, 'kanban_priority_card', None)
+        current_p = card.get('priority', '🟡') if card else '🟡'
+        p_names = {'🔴': 'HIGH', '🟡': 'MEDIUM', '🟢': 'LOW'}
+        p_colors = {'🔴': (220, 80, 80), '🟡': (220, 180, 60), '🟢': (80, 180, 100)}
         
-        # Current → New
-        old_p = getattr(self, 'kanban_priority_old', '🟡')
-        new_p = getattr(self, 'kanban_priority_new', '🔴')
-        change_text = f"{old_p} → {new_p}"
-        change_surf = self.fonts['msg'].render(change_text, True, (200, 200, 200))
-        self.screen.blit(change_surf, (box_x + (box_w - change_surf.get_width()) // 2, box_y + 50))
+        title_surf = self.fonts['msg'].render("Set Priority", True, (230, 220, 180))
+        self.screen.blit(title_surf, (box_x + (box_w - title_surf.get_width()) // 2, box_y + 12))
         
-        # Buttons
-        hint_surf = self.fonts['status'].render("Enter Confirm  •  Esc Cancel", True, (140, 145, 165))
-        self.screen.blit(hint_surf, (box_x + (box_w - hint_surf.get_width()) // 2, box_y + 90))
+        # Current priority indicator
+        current_text = f"Current: {p_names.get(current_p, 'MEDIUM')}"
+        current_surf = self.fonts['status'].render(current_text, True, p_colors.get(current_p, (200, 180, 60)))
+        self.screen.blit(current_surf, (box_x + (box_w - current_surf.get_width()) // 2, box_y + 38))
+        
+        # Priority buttons
+        btn_y = box_y + 65
+        btn_w = 90
+        btn_gap = 10
+        start_x = box_x + (box_w - (btn_w * 3 + btn_gap * 2)) // 2
+        
+        priorities = [
+            ('R', 'HIGH', (200, 60, 60), (255, 100, 100)),
+            ('Y', 'MED', (180, 150, 40), (220, 190, 60)),
+            ('G', 'LOW', (60, 150, 80), (90, 200, 110)),
+        ]
+        
+        for i, (key, label, bg, fg) in enumerate(priorities):
+            bx = start_x + i * (btn_w + btn_gap)
+            pygame.draw.rect(self.screen, bg, (bx, btn_y, btn_w, 32), border_radius=6)
+            
+            key_surf = self.fonts['msg'].render(f"[{key}]", True, fg)
+            label_surf = self.fonts['status'].render(label, True, (255, 255, 255))
+            self.screen.blit(key_surf, (bx + 8, btn_y + 6))
+            self.screen.blit(label_surf, (bx + 40, btn_y + 9))
+        
+        # Hint
+        hint_surf = self.fonts['status'].render("Press R / Y / G  •  Esc Cancel", True, (120, 125, 145))
+        self.screen.blit(hint_surf, (box_x + (box_w - hint_surf.get_width()) // 2, box_y + 105))
     
     def _draw_new_card_form(self):
         """Draw new card input form"""
@@ -2184,23 +2208,27 @@ class DashboardApp:
             
             field_y += 38
         
-        # Priority selector
+        # Priority selector (1=High, 2=Med, 3=Low)
         priority_y = field_y + 5
         label_surf = self.fonts['status'].render("Priority:", True, (150, 155, 175))
         self.screen.blit(label_surf, (box_x + 20, priority_y + 5))
         
-        priorities = [('🔴', 'red'), ('🟡', 'yellow'), ('🟢', 'green')]
+        priorities = [
+            ('🔴', '1-HIGH', (200, 60, 60)),
+            ('🟡', '2-MED', (180, 150, 40)),
+            ('🟢', '3-LOW', (60, 150, 80))
+        ]
         current_p = getattr(self, 'kanban_new_priority', '🟡')
         px = box_x + 110
-        for emoji, _ in priorities:
+        for emoji, label, color in priorities:
             is_selected = emoji == current_p
-            bg = (70, 75, 95) if is_selected else (45, 48, 62)
-            pygame.draw.rect(self.screen, bg, (px, priority_y, 35, 28), border_radius=5)
+            bg = color if is_selected else (45, 48, 62)
+            pygame.draw.rect(self.screen, bg, (px, priority_y, 70, 28), border_radius=5)
             if is_selected:
-                pygame.draw.rect(self.screen, (180, 140, 60), (px, priority_y, 35, 28), width=2, border_radius=5)
-            p_surf = self.fonts['msg'].render(emoji, True, (255, 255, 255))
-            self.screen.blit(p_surf, (px + 8, priority_y + 4))
-            px += 45
+                pygame.draw.rect(self.screen, (255, 255, 255), (px, priority_y, 70, 28), width=2, border_radius=5)
+            p_surf = self.fonts['status'].render(label, True, (255, 255, 255))
+            self.screen.blit(p_surf, (px + 8, priority_y + 7))
+            px += 80
         
         # Hint
         hint_surf = self.fonts['status'].render("Tab Next • 1/2/3 Priority • Enter Save • Esc Cancel", True, (100, 105, 125))
@@ -3385,9 +3413,16 @@ class DashboardApp:
             self._handle_search_key(event)
             return
         
-        # Handle priority confirm
+        # Handle priority picker (R/Y/G)
         if getattr(self, 'kanban_priority_confirm', False):
-            if event.key == pygame.K_RETURN:
+            if event.key == pygame.K_r:
+                self.kanban_priority_new = '🔴'
+                self._apply_priority_change()
+            elif event.key == pygame.K_y:
+                self.kanban_priority_new = '🟡'
+                self._apply_priority_change()
+            elif event.key == pygame.K_g:
+                self.kanban_priority_new = '🟢'
                 self._apply_priority_change()
             elif event.key == pygame.K_ESCAPE:
                 self.kanban_priority_confirm = False
@@ -3493,17 +3528,11 @@ class DashboardApp:
                 self._load_kanban_data()
                 self.kanban_last_refresh = time.time()
         
-        # P = change priority (with confirm)
+        # P = change priority (picker)
         elif event.key == pygame.K_p:
-            if not self.kanban_holding:
+            if not getattr(self, 'kanban_holding', None):
                 card = self._get_selected_card()
                 if card:
-                    old_p = card.get('priority', '🟡')
-                    # Cycle: 🟡 → 🔴 → 🟢 → 🟡
-                    cycle = {'🟡': '🔴', '🔴': '🟢', '🟢': '🟡'}
-                    new_p = cycle.get(old_p, '🟡')
-                    self.kanban_priority_old = old_p
-                    self.kanban_priority_new = new_p
                     self.kanban_priority_card = card
                     self.kanban_priority_confirm = True
         

@@ -1884,42 +1884,77 @@ class DashboardApp:
         hint_surf = self.fonts['status'].render("1-6 Quick • Arrows • Enter • Esc", True, (100, 105, 125))
         self.screen.blit(hint_surf, (box_x + (box_w - hint_surf.get_width()) // 2, box_y + box_h - 25))
     
+    def _draw_modern_confirm(self, title, action_name, color, is_danger=False):
+        """Draw a modern confirmation dialog"""
+        # Dim background with blur effect simulation
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 220))
+        self.screen.blit(overlay, (0, 0))
+        
+        # Dialog dimensions
+        box_w, box_h = 420, 200
+        box_x = (SCREEN_WIDTH - box_w) // 2
+        box_y = (SCREEN_HEIGHT - box_h) // 2
+        
+        # Outer glow
+        glow_color = (*color[:3], 40) if len(color) == 3 else color
+        for i in range(3):
+            pygame.draw.rect(self.screen, (color[0]//4, color[1]//4, color[2]//4), 
+                           (box_x - 4 - i*2, box_y - 4 - i*2, box_w + 8 + i*4, box_h + 8 + i*4), 
+                           border_radius=16 + i*2)
+        
+        # Main box with gradient-like effect
+        pygame.draw.rect(self.screen, (30, 35, 50), (box_x, box_y, box_w, box_h), border_radius=16)
+        pygame.draw.rect(self.screen, (40, 45, 65), (box_x, box_y, box_w, 60), 
+                        border_top_left_radius=16, border_top_right_radius=16)
+        pygame.draw.rect(self.screen, color, (box_x, box_y, box_w, box_h), width=2, border_radius=16)
+        
+        # Icon circle with glow
+        icon_x = box_x + box_w // 2
+        icon_y = box_y + 30
+        pygame.draw.circle(self.screen, (color[0]//3, color[1]//3, color[2]//3), (icon_x, icon_y), 28)
+        pygame.draw.circle(self.screen, color, (icon_x, icon_y), 24)
+        icon_char = "!" if is_danger else "?"
+        icon_surf = self.fonts['menu_title'].render(icon_char, True, (255, 255, 255))
+        self.screen.blit(icon_surf, (icon_x - icon_surf.get_width()//2, icon_y - icon_surf.get_height()//2))
+        
+        # Title
+        title_surf = self.fonts['title'].render(title, True, C['text_bright'])
+        self.screen.blit(title_surf, (box_x + (box_w - title_surf.get_width())//2, box_y + 65))
+        
+        # Action name
+        action_surf = self.fonts['msg'].render(action_name, True, color)
+        self.screen.blit(action_surf, (box_x + (box_w - action_surf.get_width())//2, box_y + 95))
+        
+        # Buttons
+        btn_y = box_y + box_h - 55
+        btn_h = 38
+        btn_w = 140
+        gap = 30
+        
+        # Cancel button
+        cancel_x = box_x + box_w//2 - btn_w - gap//2
+        pygame.draw.rect(self.screen, (50, 55, 70), (cancel_x, btn_y, btn_w, btn_h), border_radius=8)
+        pygame.draw.rect(self.screen, (80, 85, 100), (cancel_x, btn_y, btn_w, btn_h), width=1, border_radius=8)
+        cancel_surf = self.fonts['msg'].render("Cancel", True, C['text_dim'])
+        self.screen.blit(cancel_surf, (cancel_x + (btn_w - cancel_surf.get_width())//2, btn_y + 10))
+        esc_surf = self.fonts['status'].render("Esc", True, (100, 105, 120))
+        self.screen.blit(esc_surf, (cancel_x + btn_w - 30, btn_y + 12))
+        
+        # Confirm button
+        confirm_x = box_x + box_w//2 + gap//2
+        pygame.draw.rect(self.screen, color, (confirm_x, btn_y, btn_w, btn_h), border_radius=8)
+        confirm_surf = self.fonts['msg'].render("Confirm", True, (255, 255, 255))
+        self.screen.blit(confirm_surf, (confirm_x + (btn_w - confirm_surf.get_width())//2, btn_y + 10))
+        enter_surf = self.fonts['status'].render("Enter", True, (255, 255, 255, 180))
+        self.screen.blit(enter_surf, (confirm_x + btn_w - 38, btn_y + 12))
+    
     def _draw_submenu_confirm(self):
         """Draw confirmation dialog for system submenu item"""
         item = getattr(self, 'system_submenu_confirm', None)
         if not item:
             return
-        
-        # Dim background
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 200))
-        self.screen.blit(overlay, (0, 0))
-        
-        # Confirmation box
-        box_w, box_h = 400, 150
-        box_x = (SCREEN_WIDTH - box_w) // 2
-        box_y = (SCREEN_HEIGHT - box_h) // 2
-        
-        pygame.draw.rect(self.screen, (35, 40, 55), (box_x, box_y, box_w, box_h), border_radius=12)
-        pygame.draw.rect(self.screen, C['warning'], (box_x, box_y, box_w, box_h), width=3, border_radius=12)
-        
-        # Warning icon
-        warn_surf = self.fonts['menu_title'].render("!", True, C['warning'])
-        pygame.draw.circle(self.screen, (60, 55, 40), (box_x + 40, box_y + 45), 22)
-        self.screen.blit(warn_surf, (box_x + 32, box_y + 28))
-        
-        # Title
-        title_surf = self.fonts['title'].render("Confirm Action", True, C['warning'])
-        self.screen.blit(title_surf, (box_x + 75, box_y + 25))
-        
-        # Message
-        msg = f"Are you sure you want to run '{item['label']}'?"
-        msg_surf = self.fonts['msg'].render(msg, True, C['text'])
-        self.screen.blit(msg_surf, (box_x + 30, box_y + 70))
-        
-        # Buttons hint
-        hint_surf = self.fonts['status'].render("Enter/Y = Yes    Esc/N = Cancel", True, C['text_muted'])
-        self.screen.blit(hint_surf, (box_x + (box_w - hint_surf.get_width()) // 2, box_y + box_h - 30))
+        self._draw_modern_confirm("Confirm Action", item['label'], C['warning'], is_danger=True)
     
     def _draw_command_running(self):
         """Draw running command indicator"""
@@ -1987,61 +2022,13 @@ class DashboardApp:
         self.screen.blit(hint_surf, (hint_x, y + card_h - 28))
         
     def _draw_confirm_dialog(self):
-        """Draw confirmation dialog"""
-        # Dim background
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-        overlay.fill((0, 0, 0))
-        overlay.set_alpha(200)
-        self.screen.blit(overlay, (0, 0))
-        
-        # Dialog box
-        dialog_w, dialog_h = 320, 140
-        dialog_x = (SCREEN_WIDTH - dialog_w) // 2
-        dialog_y = (SCREEN_HEIGHT - dialog_h) // 2
-        
-        pygame.draw.rect(self.screen, C['bg_overlay'], (dialog_x, dialog_y, dialog_w, dialog_h), border_radius=12)
-        pygame.draw.rect(self.screen, C['error'], (dialog_x, dialog_y, dialog_w, dialog_h), width=3, border_radius=12)
-        
-        # Title
-        title = "⚠ Confirm Action"
-        title_surf = self.fonts['menu_title'].render(title, True, C['text_bright'])
-        title_x = dialog_x + (dialog_w - title_surf.get_width()) // 2
-        self.screen.blit(title_surf, (title_x, dialog_y + 16))
-        
-        # Command info
+        """Draw confirmation dialog for dangerous commands"""
         commands = self.get_commands()
         cmd = commands[self.command_confirm]
         
-        msg = f"Execute: {cmd['label']}?"
-        msg_surf = self.fonts['msg'].render(msg, True, C['text'])
-        msg_x = dialog_x + (dialog_w - msg_surf.get_width()) // 2
-        self.screen.blit(msg_surf, (msg_x, dialog_y + 50))
-        
-        # Warning
-        warn = "This action cannot be undone"
-        warn_surf = self.fonts['status'].render(warn, True, C['warning'])
-        warn_x = dialog_x + (dialog_w - warn_surf.get_width()) // 2
-        self.screen.blit(warn_surf, (warn_x, dialog_y + 75))
-        
-        # Buttons
-        button_y = dialog_y + dialog_h - 36
-        button_h = 28
-        
-        # Cancel button
-        cancel_x = dialog_x + 40
-        cancel_w = 100
-        pygame.draw.rect(self.screen, C['bg_item'], (cancel_x, button_y, cancel_w, button_h), border_radius=6)
-        cancel_text = self.fonts['button'].render("ESC Cancel", True, C['text_dim'])
-        cancel_text_x = cancel_x + (cancel_w - cancel_text.get_width()) // 2
-        self.screen.blit(cancel_text, (cancel_text_x, button_y + 6))
-        
-        # Confirm button
-        confirm_x = dialog_x + dialog_w - 140
-        confirm_w = 100
-        pygame.draw.rect(self.screen, C['error'], (confirm_x, button_y, confirm_w, button_h), border_radius=6)
-        confirm_text = self.fonts['button'].render("⏎ Confirm", True, C['text_bright'])
-        confirm_text_x = confirm_x + (confirm_w - confirm_text.get_width()) // 2
-        self.screen.blit(confirm_text, (confirm_text_x, button_y + 6))
+        # Use danger color for danger category, warning for caution
+        color = C['error'] if cmd.get('category') == 'danger' else C['warning']
+        self._draw_modern_confirm("Confirm Action", cmd['label'], color, is_danger=True)
     
     def draw_kanban(self):
         """WOW Kanban v3 - Fast Track row at top, columns below"""

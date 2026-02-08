@@ -1329,11 +1329,39 @@ class DashboardApp:
                     pygame.draw.rect(self.screen, p_color, (main_x + main_w - badge_w - 12, focus_y + 12, badge_w, 22), border_radius=11)
                     self.screen.blit(badge_surf, (main_x + main_w - badge_w - 4, focus_y + 15))
                 
-                # Task title - large
+                # Task title - large (or edit box if editing)
                 title_font = self.fonts['menu_title']
-                title_text = focus_task.get('content', '')[:45] + ('...' if len(focus_task.get('content', '')) > 45 else '')
-                title_surf = title_font.render(title_text, True, (235, 240, 255))
-                self.screen.blit(title_surf, (main_x + 20, focus_y + 18))
+                is_editing = getattr(self, 'task_editing', False)
+                
+                if is_editing:
+                    # Show editable text with cursor
+                    edit_text = getattr(self, 'task_edit_text', '')
+                    cursor_pos = getattr(self, 'task_edit_cursor', len(edit_text))
+                    
+                    # Edit box background
+                    edit_w = main_w - 40
+                    pygame.draw.rect(self.screen, (25, 30, 45), (main_x + 15, focus_y + 12, edit_w, 36), border_radius=8)
+                    pygame.draw.rect(self.screen, (100, 180, 140), (main_x + 15, focus_y + 12, edit_w, 36), width=2, border_radius=8)
+                    
+                    # Text with cursor
+                    display_text = edit_text[:60]
+                    before_cursor = edit_text[:cursor_pos]
+                    
+                    text_surf = title_font.render(display_text, True, (235, 240, 255))
+                    self.screen.blit(text_surf, (main_x + 24, focus_y + 18))
+                    
+                    # Blinking cursor
+                    if int(self.wow_anim_time * 3) % 2 == 0:
+                        cursor_x = main_x + 24 + title_font.size(before_cursor[:60])[0]
+                        pygame.draw.line(self.screen, (100, 200, 150), (cursor_x, focus_y + 16), (cursor_x, focus_y + 42), 2)
+                    
+                    # Hint
+                    hint_surf = self.fonts['status'].render("Enter to save • Esc to cancel", True, (100, 180, 140))
+                    self.screen.blit(hint_surf, (main_x + 20, focus_y + 55))
+                else:
+                    title_text = focus_task.get('content', '')[:55] + ('...' if len(focus_task.get('content', '')) > 55 else '')
+                    title_surf = title_font.render(title_text, True, (235, 240, 255))
+                    self.screen.blit(title_surf, (main_x + 20, focus_y + 18))
                 
                 # Due date with icon
                 due = focus_task.get('due', '')
@@ -1410,9 +1438,9 @@ class DashboardApp:
                 if priority >= 3:
                     pygame.draw.circle(self.screen, p_color, (cb_x, cb_y), 5)
                 
-                # Task text
+                # Task text - use more space
                 text_color = (220, 225, 240) if is_selected else (160, 165, 180)
-                max_len = 28 - indent * 3
+                max_len = 45 - indent * 5  # More room for text
                 display_text = content[:max_len] + ('...' if len(content) > max_len else '')
                 text_surf = self.fonts['msg'].render(display_text, True, text_color)
                 self.screen.blit(text_surf, (cb_x + 18, row_y + row_h//2 - text_surf.get_height()//2))

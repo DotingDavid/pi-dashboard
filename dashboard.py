@@ -3060,166 +3060,115 @@ class DashboardApp:
         self.screen.blit(close_surf, (px + (pw - close_surf.get_width()) // 2, py + ph - 30))
     
     def _load_kanban_data(self):
-        """Parse kanban markdown file into structured data"""
-        import re
-        self.kanban_data = {
+        """Load kanban data from JSON file"""
+        import json
+        
+        empty_cols = {
             'Not Started': [], 'Research': [], 'Active': [], 
             'Stuck': [], 'Review': [], 'Implement': [], 'Finished': []
         }
-        self.kanban_fasttrack = {
-            'Not Started': [], 'Research': [], 'Active': [], 
-            'Stuck': [], 'Review': [], 'Implement': [], 'Finished': []
-        }
+        self.kanban_data = {k: list(v) for k, v in empty_cols.items()}
+        self.kanban_fasttrack = {k: list(v) for k, v in empty_cols.items()}
         
         board_name = getattr(self, 'kanban_board', 'salon')
+        kanban_file = Path.home() / f'.openclaw/workspace/work/kanban/{board_name}.json'
         
-        # Select file based on current board
-        kanban_file = Path.home() / f'.openclaw/workspace/work/kanban/{board_name}.md'
         if not kanban_file.exists():
+            # Try to migrate from markdown if it exists
+            md_file = Path.home() / f'.openclaw/workspace/work/kanban/{board_name}.md'
+            if md_file.exists():
+                self._migrate_markdown_to_json(md_file, kanban_file)
             return
         
-        self._parse_kanban_file(kanban_file)
+        try:
+            data = json.loads(kanban_file.read_text())
+            for col in self.kanban_data:
+                if col in data.get('columns', {}):
+                    self.kanban_data[col] = data['columns'][col]
+                if col in data.get('fasttrack', {}):
+                    self.kanban_fasttrack[col] = data['fasttrack'][col]
+        except:
+            pass
     
-    def _load_fasttrack_data(self):
-        """Load Fast Track items from both salon and personal boards"""
-        import re
+    def _save_kanban_data(self):
+        """Save kanban data to JSON file"""
+        import json
         
-        for board in ['salon', 'personal']:
-            kanban_file = Path.home() / f'.openclaw/workspace/work/kanban/{board}.md'
-            if not kanban_file.exists():
-                continue
-            
-            try:
-                content = kanban_file.read_text()
-                in_fasttrack = False
-                current_column = None
-                current_card = None
-                
-                for line in content.split('\n'):
-                    # Detect Fast Track section
-                    if '## 🔥' in line or '## Fast Track' in line.replace(' ', ''):
-                        in_fasttrack = True
-                        continue
-                    
-                    # Exit fast track on next major section
-                    if in_fasttrack and line.startswith('## ') and '🔥' not in line:
-                        in_fasttrack = False
-                        current_card = None
-                        continue
-                    
-                    if not in_fasttrack:
-                        continue
-                    
-                    # Column headers in fast track
-                    if line.startswith('### '):
-                        col_name = line[4:].strip().replace(' (Urgent)', '')
-                        for known in self.kanban_data.keys():
-                            if known.lower() in col_name.lower():
-                                current_column = known
-                                break
-                        current_card = None
-                    
-                    # Card titles
-                    elif line.startswith('- **') or line.startswith('- '):
-                        title_match = re.match(r'-\s*\*?\*?(.+?)\*?\*?\s*(🔴|🟡|🟢)?$', line)
-                        if title_match and current_column:
-                            title = title_match.group(1).strip().strip('*')
-                            priority = title_match.group(2) or '🔴'  # Fast track defaults to high priority
-                            source = '🏪' if board == 'salon' else '👤'
-                            current_card = {'title': f"{source} {title}", 'priority': priority, 'due': '', 'context': board, 'description': ''}
-                            self.kanban_data[current_column].append(current_card)
-            except:
-                pass
+        board_name = getattr(self, 'kanban_board', 'salon')
+        kanban_file = Path.home() / f'.openclaw/workspace/work/kanban/{board_name}.json'
+        kanban_file.parent.mkdir(parents=True, exist_ok=True)
         
-        # Sort by priority
-        priority_order = {'🔴': 0, '🟡': 1, '🟢': 2}
-        for col in self.kanban_data:
-            self.kanban_data[col].sort(key=lambda c: priority_order.get(c.get('priority', '🟡'), 1))
-    
-    def _parse_kanban_file(self, kanban_file):
-        """Parse a single kanban file - separates main board from Fast Track"""
-        import re
-        
-        # Initialize fast track data
-        if not hasattr(self, 'kanban_fasttrack'):
-            self.kanban_fasttrack = {col: [] for col in self.kanban_data.keys()}
+        data = {
+            'columns': self.kanban_data,
+            'fasttrack': self.kanban_fasttrack
+        }
         
         try:
-            content = kanban_file.read_text()
+            kanban_file.write_text(json.dumps(data, indent=2))
+            self.kanban_sync_status = 'live'
+        except:
+            self.kanban_sync_status = 'error'
+    
+    def _migrate_markdown_to_json(self, md_file, json_file):
+        """One-time migration from markdown to JSON"""
+        import re
+        
+        try:
+            content = md_file.read_text()
+            in_fasttrack = False
             current_column = None
             current_card = None
-            in_fasttrack = False  # Track if we're in Fast Track section
             
             for line in content.split('\n'):
-                # Detect Fast Track section start
-                if line.startswith('## 🔥 Fast Track'):
+                # Detect Fast Track section
+                if '## 🔥' in line or '## Fast Track' in line:
                     in_fasttrack = True
-                    current_column = None
-                    current_card = None
                     continue
                 
-                # Detect end of Fast Track (Archive section)
-                if line.startswith('## Archive'):
+                # Exit fast track on next major section
+                if in_fasttrack and line.startswith('## ') and '🔥' not in line:
                     in_fasttrack = False
-                    current_column = None
                     current_card = None
-                    continue
                 
-                # Detect column headers (### Column Name)
-                if line.startswith('### ') and not line.startswith('### Idea') and not line.startswith('### Status') and not line.startswith('### Check') and not line.startswith('### Notes'):
-                    col_name = line[4:].strip()
-                    # Remove (Urgent) suffix for matching
-                    col_name = col_name.replace(' (Urgent)', '')
-                    # Match to known columns
+                # Column headers
+                if line.startswith('### '):
+                    col_name = line[4:].strip().replace(' (Urgent)', '')
                     for known in self.kanban_data.keys():
                         if known.lower() in col_name.lower():
                             current_column = known
                             break
                     current_card = None
                 
-                # Detect card titles (## Title 🔴/🟡/🟢)
-                elif line.startswith('## ') and current_column and not line.startswith('## Main') and not line.startswith('## 💡'):
-                    title_match = re.match(r'## (.+?)\s*(🔴|🟡|🟢)?$', line)
+                # Card titles (## Title or - **Title**)
+                elif line.startswith('## ') and not line.startswith('## 🔥'):
+                    title = line[3:].strip()
+                    priority = '🔴' if '🔴' in title else '🟡' if '🟡' in title else '🟢' if '🟢' in title else '🟡'
+                    title = title.replace('🔴', '').replace('🟡', '').replace('🟢', '').strip()
+                    current_card = {'title': title, 'priority': priority, 'description': '', 'due': ''}
+                    if current_column:
+                        target = self.kanban_fasttrack if in_fasttrack else self.kanban_data
+                        target[current_column].append(current_card)
+                
+                elif line.startswith('- **') and current_column:
+                    title_match = re.match(r'-\s*\*\*(.+?)\*\*\s*(🔴|🟡|🟢)?', line)
                     if title_match:
                         title = title_match.group(1).strip()
                         priority = title_match.group(2) or '🟡'
-                        current_card = {
-                            'title': title, 
-                            'priority': priority, 
-                            'due': '', 
-                            'context': '', 
-                            'description': '',
-                            '_from_column': current_column
-                        }
-                        # Add to appropriate data structure
-                        if in_fasttrack:
-                            self.kanban_fasttrack[current_column].append(current_card)
-                        else:
-                            self.kanban_data[current_column].append(current_card)
+                        current_card = {'title': title, 'priority': priority, 'description': '', 'due': ''}
+                        target = self.kanban_fasttrack if in_fasttrack else self.kanban_data
+                        target[current_column].append(current_card)
                 
-                # Parse card metadata
-                elif current_card:
-                    if line.startswith('**Due:**'):
-                        due_match = re.search(r'\*\*Due:\*\*\s*([^|]+)', line)
-                        if due_match:
-                            current_card['due'] = due_match.group(1).strip()
-                        ctx_match = re.search(r'\*\*Context:\*\*\s*([^*\n]+)', line)
-                        if ctx_match:
-                            current_card['context'] = ctx_match.group(1).strip()
-                    elif line.strip() and not line.startswith('**') and not line.startswith('#') and not line.startswith('-') and not line.startswith('<!--'):
-                        if not current_card['description']:
-                            current_card['description'] = line.strip()
+                # Description lines
+                elif current_card and line.strip() and not line.startswith('#') and not line.startswith('-'):
+                    if current_card.get('description'):
+                        current_card['description'] += ' ' + line.strip()
+                    else:
+                        current_card['description'] = line.strip()
             
-            # Sort cards by priority (🔴 > 🟡 > 🟢)
-            priority_order = {'🔴': 0, '🟡': 1, '🟢': 2}
-            for col in self.kanban_data:
-                self.kanban_data[col].sort(key=lambda c: priority_order.get(c.get('priority', '🟡'), 1))
-            for col in self.kanban_fasttrack:
-                self.kanban_fasttrack[col].sort(key=lambda c: priority_order.get(c.get('priority', '🟡'), 1))
-                
+            self._save_kanban_data()
         except Exception as e:
-            pass  # Silently fail, show empty board
-                
+            pass
+    
     def draw_chat(self):
         """Draw chat panel"""
         y_start = 38
@@ -4417,94 +4366,41 @@ class DashboardApp:
                 self.switch_mode(MODE_DASHBOARD)
     
     def _place_kanban_card(self):
-        """
-        Place held card. Handles 4 scenarios:
-        1. Main → Main (different column)
-        2. Fast Track → Fast Track (different column)  
-        3. Main → Fast Track
-        4. Fast Track → Main
-        """
-        import re
+        """Place held card in new location (JSON-based)"""
         all_columns = ['Not Started', 'Research', 'Active', 'Stuck', 'Review', 'Implement', 'Finished']
         
         if not self.kanban_holding:
             return
         
         self.kanban_sync_status = 'syncing'
-        self.kanban_sync_time = time.time()
-        
         card = self.kanban_holding
-        card_title = card.get('title', '')
         
         # Where is it going?
         to_fasttrack = getattr(self, 'kanban_in_fasttrack', False)
-        dst_col_name = all_columns[self.kanban_col]
+        dst_col = all_columns[self.kanban_col]
         
         # Where did it come from?
         from_fasttrack = (self.kanban_holding_from == -1)
         if from_fasttrack:
-            src_col_name = card.get('_from_column', 'Active')
+            src_col = card.get('_from_column', 'Active')
         else:
-            src_col_name = all_columns[self.kanban_holding_from]
+            src_col = all_columns[self.kanban_holding_from]
         
-        # Build target column header name
-        if to_fasttrack:
-            target_header = f'{dst_col_name} (Urgent)'
-        else:
-            target_header = dst_col_name
+        # Remove from source
+        src_data = self.kanban_fasttrack if from_fasttrack else self.kanban_data
+        if card in src_data.get(src_col, []):
+            src_data[src_col].remove(card)
         
-        # Update markdown file
-        board_name = getattr(self, 'kanban_board', 'salon')
-        kanban_file = Path.home() / f'.openclaw/workspace/work/kanban/{board_name}.md'
+        # Clean up internal tracking field
+        if '_from_column' in card:
+            del card['_from_column']
         
-        try:
-            content = kanban_file.read_text()
-            
-            # Find the card block
-            pattern = rf'## {re.escape(card_title)}.*?(?=\n## |\n### |\Z)'
-            match = re.search(pattern, content, re.DOTALL)
-            
-            if not match:
-                self.kanban_sync_status = 'error'
-                self._clear_holding()
-                return
-            
-            card_block = match.group(0).strip()
-            
-            # Remove card from current location
-            content = content.replace(match.group(0), '', 1)
-            
-            # Clean up empty lines and duplicate separators
-            content = re.sub(r'\n{3,}', '\n\n', content)
-            content = re.sub(r'(---\n)+---', '---', content)
-            
-            # Find target column and insert card
-            # Match "### Column Name" followed by optional comment line
-            target_pattern = rf'(### {re.escape(target_header)}\n(?:<!--[^>]*-->\n)?)'
-            target_match = re.search(target_pattern, content)
-            
-            if target_match:
-                insert_at = target_match.end()
-                new_content = (
-                    content[:insert_at] + 
-                    '\n' + card_block + '\n\n---\n\n' + 
-                    content[insert_at:].lstrip('\n')
-                )
-                # Final cleanup
-                new_content = re.sub(r'\n{3,}', '\n\n', new_content)
-                new_content = re.sub(r'(---\n)+---', '---', new_content)
-                
-                kanban_file.write_text(new_content)
-                self.kanban_sync_status = 'live'
-                
-                # Reload data to reflect changes
-                self._load_kanban_data()
-            else:
-                self.kanban_sync_status = 'error'
-                
-        except Exception as e:
-            self.kanban_sync_status = 'error'
+        # Add to destination
+        dst_data = self.kanban_fasttrack if to_fasttrack else self.kanban_data
+        dst_data[dst_col].insert(0, card)
         
+        # Save to JSON
+        self._save_kanban_data()
         self._clear_holding()
     
     def _clear_holding(self):
@@ -4595,8 +4491,7 @@ class DashboardApp:
         self.kanban_search_idx = 0
     
     def _apply_priority_change(self):
-        """Apply the priority change to the card and file"""
-        import re
+        """Apply the priority change to the card (JSON-based)"""
         card = getattr(self, 'kanban_priority_card', None)
         new_p = getattr(self, 'kanban_priority_new', '🟡')
         
@@ -4604,38 +4499,11 @@ class DashboardApp:
             self.kanban_priority_confirm = False
             return
         
-        old_title = card.get('title', '')
-        old_p = card.get('priority', '🟡')
-        
         # Update in memory
         card['priority'] = new_p
         
-        # Update file
-        board_name = getattr(self, 'kanban_board', 'salon')
-        kanban_file = Path.home() / f'.openclaw/workspace/work/kanban/{board_name}.md'
-        
-        try:
-            content = kanban_file.read_text()
-            # Replace old priority with new in the title line
-            old_line = f'## {old_title}'
-            # The priority emoji might be at the end
-            if old_p in old_line:
-                new_line = old_line.replace(old_p, new_p)
-            else:
-                # Priority is separate, need to find the pattern
-                pattern = rf'(## {re.escape(old_title.replace(old_p, "").strip())})\s*{re.escape(old_p)}'
-                new_line = rf'\1 {new_p}'
-                content = re.sub(pattern, new_line, content)
-                kanban_file.write_text(content)
-                self._load_kanban_data()
-                self.kanban_priority_confirm = False
-                return
-            
-            content = content.replace(old_line, new_line.replace(old_p, new_p))
-            kanban_file.write_text(content)
-            self._load_kanban_data()
-        except Exception:
-            pass
+        # Save to JSON
+        self._save_kanban_data()
         
         self.kanban_priority_confirm = False
     
@@ -4684,11 +4552,7 @@ class DashboardApp:
                 self.kanban_new_context = getattr(self, 'kanban_new_context', '') + event.unicode
     
     def _save_new_card(self):
-        """Save new card to file"""
-        import re
-        import uuid
-        from datetime import datetime
-        
+        """Save new card to JSON"""
         title = getattr(self, 'kanban_new_title', '').strip()
         if not title:
             self.kanban_new_card_mode = False
@@ -4698,52 +4562,27 @@ class DashboardApp:
         context = getattr(self, 'kanban_new_context', '@salon')
         priority = getattr(self, 'kanban_new_priority', '🟡')
         
-        # Build card block
-        card_id = str(uuid.uuid4())
-        timestamp = datetime.now().isoformat()
+        # Create card object
+        card = {
+            'title': title,
+            'description': desc,
+            'priority': priority,
+            'context': context,
+            'due': ''
+        }
         
-        card_block = f"""## {title} {priority}
-<!-- id: {card_id} -->
-<!-- timestamps: {{"createdAt":"{timestamp}","columnSince":"{timestamp}"}} -->
-**Due:** TBD | **Context:** {context}
-**Assignee:** —
-**Waiting On:** —
-
-{desc}
-
-### Status
-[New]
-
-### Checklist
-- [ ] Define scope
-
-### Notes
-- {datetime.now().strftime('%Y-%m-%d')}: Created
-
----
-"""
-        
-        # Add to file in current column
+        # Add to current column
         all_columns = ['Not Started', 'Research', 'Active', 'Stuck', 'Review', 'Implement', 'Finished']
         target_col = all_columns[self.kanban_col]
         
-        board_name = getattr(self, 'kanban_board', 'salon')
-        kanban_file = Path.home() / f'.openclaw/workspace/work/kanban/{board_name}.md'
+        # Add to fast track or main board
+        if getattr(self, 'kanban_in_fasttrack', False):
+            self.kanban_fasttrack[target_col].insert(0, card)
+        else:
+            self.kanban_data[target_col].insert(0, card)
         
-        try:
-            content = kanban_file.read_text()
-            
-            # Find target column
-            pattern = rf'(### {target_col}\n(?:<!--[^>]*-->\n)?)'
-            match = re.search(pattern, content)
-            
-            if match:
-                insert_at = match.end()
-                content = content[:insert_at] + '\n' + card_block + content[insert_at:]
-                kanban_file.write_text(content)
-                self._load_kanban_data()
-        except Exception:
-            pass
+        # Save to JSON
+        self._save_kanban_data()
         
         self.kanban_new_card_mode = False
     
@@ -4766,39 +4605,23 @@ class DashboardApp:
             self.kanban_delete_text = getattr(self, 'kanban_delete_text', '') + event.unicode
     
     def _delete_card(self):
-        """Delete the selected card from the file"""
-        import re
-        
+        """Delete the selected card (JSON-based)"""
         card = getattr(self, 'kanban_delete_card', None)
         if not card:
             return
         
-        card_title = card.get('title', '')
-        board_name = getattr(self, 'kanban_board', 'salon')
-        kanban_file = Path.home() / f'.openclaw/workspace/work/kanban/{board_name}.md'
+        # Remove from all columns in both main and fasttrack
+        for col in self.kanban_data:
+            if card in self.kanban_data[col]:
+                self.kanban_data[col].remove(card)
+            if card in self.kanban_fasttrack[col]:
+                self.kanban_fasttrack[col].remove(card)
         
-        try:
-            content = kanban_file.read_text()
-            
-            # Find and remove the card block
-            pattern = rf'## {re.escape(card_title)}.*?(?=\n## |\n### |\Z)'
-            match = re.search(pattern, content, re.DOTALL)
-            
-            if match:
-                # Remove the card block
-                content = content.replace(match.group(0), '', 1)
-                
-                # Clean up extra separators and blank lines
-                content = re.sub(r'\n{3,}', '\n\n', content)
-                content = re.sub(r'(---\n)+---', '---', content)
-                
-                kanban_file.write_text(content)
-                self._load_kanban_data()
-                
-                # Reset selection
-                self.kanban_card = 0
-        except Exception:
-            pass
+        # Save to JSON
+        self._save_kanban_data()
+        
+        # Reset selection
+        self.kanban_card = 0
             
     def run(self):
         running = True

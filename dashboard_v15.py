@@ -2283,7 +2283,8 @@ class DashboardApp:
                     in_description = False
                 
                 # Detect card titles (## Title 🔴/🟡/🟢)
-                elif line.startswith('## ') and current_column and not line.startswith('## Main') and not line.startswith('## 💡') and not line.startswith('## 🔥') and not line.startswith('## Archive'):
+                # Note: 🔥 in title is OK, but skip "## 🔥 Fast Track" section header
+                elif line.startswith('## ') and current_column and not line.startswith('## Main') and not line.startswith('## 💡') and not line.startswith('## 🔥 Fast Track') and not line.startswith('## Archive'):
                     title_match = re.match(r'## (.+?)\s*(🔴|🟡|🟢)?$', line)
                     if title_match:
                         title = title_match.group(1).strip()

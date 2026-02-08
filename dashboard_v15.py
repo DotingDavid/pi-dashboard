@@ -1782,13 +1782,12 @@ class DashboardApp:
         ft_y = header_y + header_h + 4
         ft_h = 70  # Taller for better visibility
         
-        # Collect all fast track items from current board
+        # Get fast track items from parsed data
         ft_cards = []
+        ft_data = getattr(self, 'kanban_fasttrack', {})
         for col_name in all_columns:
-            for card in self._get_kanban_column_cards(col_name):
-                if '🔥' in card.get('title', '') or card.get('fast_track', False):
-                    card['_from_column'] = col_name
-                    ft_cards.append(card)
+            for card in ft_data.get(col_name, []):
+                ft_cards.append(card)
         
         # Fast track container with pulsing border
         pulse = 0.6 + 0.4 * math.sin(self.kanban_anim * 3)
@@ -2187,13 +2186,12 @@ class DashboardApp:
             'Not Started': [], 'Research': [], 'Active': [], 
             'Stuck': [], 'Review': [], 'Implement': [], 'Finished': []
         }
+        self.kanban_fasttrack = {
+            'Not Started': [], 'Research': [], 'Active': [], 
+            'Stuck': [], 'Review': [], 'Implement': [], 'Finished': []
+        }
         
         board_name = getattr(self, 'kanban_board', 'salon')
-        
-        # Fast Track: collect 🔥 items from both boards
-        if board_name == 'fasttrack':
-            self._load_fasttrack_data()
-            return
         
         # Select file based on current board
         kanban_file = Path.home() / f'.openclaw/workspace/work/kanban/{board_name}.md'
@@ -2259,20 +2257,38 @@ class DashboardApp:
             self.kanban_data[col].sort(key=lambda c: priority_order.get(c.get('priority', '🟡'), 1))
     
     def _parse_kanban_file(self, kanban_file):
-        """Parse a single kanban file"""
+        """Parse a single kanban file - separates main board from Fast Track"""
         import re
+        
+        # Initialize fast track data
+        if not hasattr(self, 'kanban_fasttrack'):
+            self.kanban_fasttrack = {col: [] for col in self.kanban_data.keys()}
         
         try:
             content = kanban_file.read_text()
             current_column = None
             current_card = None
-            in_description = False
+            in_fasttrack = False  # Track if we're in Fast Track section
             
             for line in content.split('\n'):
+                # Detect Fast Track section start
+                if line.startswith('## 🔥 Fast Track'):
+                    in_fasttrack = True
+                    current_column = None
+                    current_card = None
+                    continue
+                
+                # Detect end of Fast Track (Archive section)
+                if line.startswith('## Archive'):
+                    in_fasttrack = False
+                    current_column = None
+                    current_card = None
+                    continue
+                
                 # Detect column headers (### Column Name)
                 if line.startswith('### ') and not line.startswith('### Idea') and not line.startswith('### Status') and not line.startswith('### Check') and not line.startswith('### Notes'):
                     col_name = line[4:].strip()
-                    # Remove (Urgent) suffix
+                    # Remove (Urgent) suffix for matching
                     col_name = col_name.replace(' (Urgent)', '')
                     # Match to known columns
                     for known in self.kanban_data.keys():
@@ -2280,18 +2296,26 @@ class DashboardApp:
                             current_column = known
                             break
                     current_card = None
-                    in_description = False
                 
                 # Detect card titles (## Title 🔴/🟡/🟢)
-                # Note: 🔥 in title is OK, but skip "## 🔥 Fast Track" section header
-                elif line.startswith('## ') and current_column and not line.startswith('## Main') and not line.startswith('## 💡') and not line.startswith('## 🔥 Fast Track') and not line.startswith('## Archive'):
+                elif line.startswith('## ') and current_column and not line.startswith('## Main') and not line.startswith('## 💡'):
                     title_match = re.match(r'## (.+?)\s*(🔴|🟡|🟢)?$', line)
                     if title_match:
                         title = title_match.group(1).strip()
                         priority = title_match.group(2) or '🟡'
-                        current_card = {'title': title, 'priority': priority, 'due': '', 'context': '', 'description': ''}
-                        self.kanban_data[current_column].append(current_card)
-                        in_description = False
+                        current_card = {
+                            'title': title, 
+                            'priority': priority, 
+                            'due': '', 
+                            'context': '', 
+                            'description': '',
+                            '_from_column': current_column
+                        }
+                        # Add to appropriate data structure
+                        if in_fasttrack:
+                            self.kanban_fasttrack[current_column].append(current_card)
+                        else:
+                            self.kanban_data[current_column].append(current_card)
                 
                 # Parse card metadata
                 elif current_card:
@@ -2302,7 +2326,6 @@ class DashboardApp:
                         ctx_match = re.search(r'\*\*Context:\*\*\s*([^*\n]+)', line)
                         if ctx_match:
                             current_card['context'] = ctx_match.group(1).strip()
-                    # Capture description (line after metadata, before ### Status)
                     elif line.strip() and not line.startswith('**') and not line.startswith('#') and not line.startswith('-') and not line.startswith('<!--'):
                         if not current_card['description']:
                             current_card['description'] = line.strip()
@@ -2311,6 +2334,8 @@ class DashboardApp:
             priority_order = {'🔴': 0, '🟡': 1, '🟢': 2}
             for col in self.kanban_data:
                 self.kanban_data[col].sort(key=lambda c: priority_order.get(c.get('priority', '🟡'), 1))
+            for col in self.kanban_fasttrack:
+                self.kanban_fasttrack[col].sort(key=lambda c: priority_order.get(c.get('priority', '🟡'), 1))
                 
         except Exception as e:
             pass  # Silently fail, show empty board
@@ -3166,12 +3191,12 @@ class DashboardApp:
             self.kanban_in_fasttrack = False
             self.kanban_ft_card = 0
         
-        # Get fast track cards
+        # Get fast track cards from parsed Fast Track section
         ft_cards = []
+        ft_data = getattr(self, 'kanban_fasttrack', {})
         for col_name in all_columns:
-            for card in self.kanban_data.get(col_name, []):
-                if '🔥' in card.get('title', '') or card.get('fast_track', False):
-                    ft_cards.append(card)
+            for card in ft_data.get(col_name, []):
+                ft_cards.append(card)
         
         # Close detail popup
         if hasattr(self, 'kanban_detail') and self.kanban_detail:
@@ -3305,30 +3330,12 @@ class DashboardApp:
         card = self.kanban_holding
         moving_to_fasttrack = getattr(self, 'kanban_in_fasttrack', False)
         
-        # Determine source column
-        if self.kanban_holding_from == -1:
-            # Coming from fast track - find the actual column
-            src_col = card.get('_from_column', 'Active')
-        else:
-            src_col = all_columns[self.kanban_holding_from]
+        # Determine source
+        from_fasttrack = self.kanban_holding_from == -1
+        src_col = card.get('_from_column', 'Active') if from_fasttrack else all_columns[self.kanban_holding_from]
+        dst_col = all_columns[self.kanban_col]
         
-        # Destination is current column (stay in same column if moving to/from FT)
-        dst_col = all_columns[self.kanban_col] if not moving_to_fasttrack else src_col
-        
-        # Determine if we're toggling fast track status
-        old_title = card.get('title', '')
-        was_fasttrack = '🔥' in old_title
-        
-        if moving_to_fasttrack and not was_fasttrack:
-            # Adding to fast track - prepend 🔥
-            new_title = '🔥 ' + old_title
-            card['title'] = new_title
-        elif not moving_to_fasttrack and was_fasttrack and self.kanban_holding_from == -1:
-            # Removing from fast track - strip 🔥
-            new_title = old_title.replace('🔥', '').strip()
-            card['title'] = new_title
-        else:
-            new_title = old_title
+        card_title = card.get('title', '')
         
         # Update file
         board_name = getattr(self, 'kanban_board', 'salon')
@@ -3337,50 +3344,46 @@ class DashboardApp:
         try:
             content = kanban_file.read_text()
             
-            # Just toggling fast track? Update title in place
-            if src_col == dst_col and new_title != old_title:
-                content = content.replace(f'## {old_title}', f'## {new_title}', 1)
+            # Find and extract the card block
+            pattern = rf'(## {re.escape(card_title)}.*?(?=\n## |\n### |\Z))'
+            match = re.search(pattern, content, re.DOTALL)
+            
+            if not match:
+                self.kanban_sync_status = 'error'
+                self.kanban_holding = None
+                self.kanban_holding_from = None
+                return
+            
+            card_block = match.group(1).strip()
+            
+            # Remove from old location
+            content = content.replace(match.group(1), '', 1)
+            content = re.sub(r'(---\s*\n){2,}', '---\n\n', content)
+            
+            # Determine target section
+            if moving_to_fasttrack and not from_fasttrack:
+                # Moving TO Fast Track - use "(Urgent)" column
+                target_col = f'{dst_col} (Urgent)'
+            elif not moving_to_fasttrack and from_fasttrack:
+                # Moving FROM Fast Track - use normal column
+                target_col = dst_col
+            else:
+                # Normal move within same section
+                target_col = f'{dst_col} (Urgent)' if from_fasttrack else dst_col
+            
+            # Find target column header
+            dst_pattern = rf'(### {re.escape(target_col)}.*?\n(?:<!--.*?-->\n)?)'
+            dst_match = re.search(dst_pattern, content)
+            
+            if dst_match:
+                insert_pos = dst_match.end()
+                content = content[:insert_pos] + '\n' + card_block + '\n\n---\n\n' + content[insert_pos:]
+                content = re.sub(r'(---\s*\n){2,}', '---\n\n', content)
                 kanban_file.write_text(content)
                 self.kanban_sync_status = 'live'
-            elif src_col != dst_col:
-                # Actually moving between columns
-                pattern = rf'(## {re.escape(old_title)}.*?(?=\n## |\n### |\Z))'
-                match = re.search(pattern, content, re.DOTALL)
-                
-                if match:
-                    card_block = match.group(1).strip()
-                    
-                    # Update title if changed
-                    if new_title != old_title:
-                        card_block = card_block.replace(f'## {old_title}', f'## {new_title}', 1)
-                    
-                    # Remove from old location
-                    content = content.replace(match.group(1), '', 1)
-                    # Clean up multiple separators
-                    content = re.sub(r'(---\s*\n){2,}', '---\n\n', content)
-                    
-                    # Find target column and insert
-                    dst_pattern = rf'(### {dst_col}.*?\n(?:<!--.*?-->\n)?)'
-                    dst_match = re.search(dst_pattern, content)
-                    if dst_match:
-                        insert_pos = dst_match.end()
-                        content = content[:insert_pos] + '\n' + card_block + '\n\n---\n\n' + content[insert_pos:]
-                        kanban_file.write_text(content)
-                        self.kanban_sync_status = 'live'
-                        
-                        # Update in-memory
-                        if card in self.kanban_data.get(src_col, []):
-                            self.kanban_data[src_col].remove(card)
-                        if dst_col not in self.kanban_data:
-                            self.kanban_data[dst_col] = []
-                        self.kanban_data[dst_col].insert(0, card)
-                    else:
-                        self.kanban_sync_status = 'error'
-                else:
-                    self.kanban_sync_status = 'error'
             else:
-                # No change needed
-                self.kanban_sync_status = 'live'
+                self.kanban_sync_status = 'error'
+                
         except Exception as e:
             self.kanban_sync_status = 'error'
         

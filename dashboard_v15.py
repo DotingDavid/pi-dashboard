@@ -1313,8 +1313,8 @@ class DashboardApp:
         # ═══════════════════════════════════════════════════════════════
         # HEARTBEAT INDICATOR - Beating heart with countdown
         # ═══════════════════════════════════════════════════════════════
-        heart_x = 420
-        heart_y = 85
+        heart_x = 395
+        heart_y = 100
         
         # Heartbeat animation - quick pulse then rest
         beat_cycle = (self.home_anim * 1.2) % 1.0
@@ -1707,6 +1707,8 @@ class DashboardApp:
             self.wow_anim_time = 0
         if not hasattr(self, 'task_expanded'):
             self.task_expanded = set()
+        if not hasattr(self, 'tasks') or self.tasks is None:
+            self.tasks = []
         
         self.wow_anim_time += 0.03  # Animation timer
         

@@ -1409,8 +1409,8 @@ class DashboardApp:
         # ═══════════════════════════════════════════════════════════════
         panel_y = tiles_y + tile_h + 12
         panel_h = SCREEN_HEIGHT - panel_y - 35
-        panel_gap = 12
-        panel_w = (SCREEN_WIDTH - 30 - panel_gap) // 2
+        panel_gap = 10
+        panel_w = (SCREEN_WIDTH - 40 - panel_gap) // 2  # 40 = 15 left + 25 right margin
         
         # ─────────────────────────────────────────────────────────────
         # LEFT PANEL: Top Tasks

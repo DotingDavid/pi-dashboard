@@ -1169,11 +1169,12 @@ class DashboardApp:
         import math
         import random
         
-        # Initialize animation state
+        # Initialize animation state - check each attribute separately
         if not hasattr(self, 'home_anim'):
             self.home_anim = 0
+        
+        if not hasattr(self, 'home_particles') or not self.home_particles:
             self.home_particles = []
-            self.home_orbs = []
             # Floating particles
             for _ in range(25):
                 self.home_particles.append({
@@ -1185,6 +1186,9 @@ class DashboardApp:
                     'hue': random.uniform(0, 1),
                     'phase': random.uniform(0, math.pi * 2)
                 })
+        
+        if not hasattr(self, 'home_orbs') or not self.home_orbs:
+            self.home_orbs = []
             # Glowing orbs (larger, slower)
             for _ in range(5):
                 self.home_orbs.append({

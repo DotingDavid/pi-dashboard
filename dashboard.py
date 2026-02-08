@@ -1630,66 +1630,63 @@ class DashboardApp:
         self.screen.blit(sidebar_surf, (sidebar_x, 44))
         pygame.draw.rect(self.screen, (60, 65, 85), (sidebar_x, 44, sidebar_w, SCREEN_HEIGHT - 50), width=1, border_radius=12)
         
-        # Project cards with progress rings
+        # Modern sidebar items with accent bars and count badges
         card_y = 54
         proj_items = [
-            ('all', 'All', total, (100, 140, 220)),
+            ('all', 'All Tasks', total, (100, 140, 220)),
             ('inbox', 'Inbox', len(projects['inbox']['tasks']), (130, 180, 255)),
             ('salon', 'Salon', len(projects['salon']['tasks']), (255, 140, 180)),
             ('today', 'Today', today_count, (255, 200, 80)),
-            ('overdue', 'Late', overdue_count, (255, 90, 90)),
+            ('overdue', 'Overdue', overdue_count, (255, 90, 90)),
         ]
         
         for proj_id, proj_name, count, color in proj_items:
             is_active = self.task_filter == proj_id
-            card_h = 48
+            card_h = 42
             
             # Card background with glow for active
             if is_active:
                 # Animated glow
-                glow_intensity = 0.6 + 0.4 * math.sin(self.wow_anim_time * 3)
+                glow_intensity = 0.5 + 0.3 * math.sin(self.wow_anim_time * 3)
                 glow_color = (int(color[0] * glow_intensity), int(color[1] * glow_intensity), int(color[2] * glow_intensity))
-                for g in range(4, 0, -1):
+                for g in range(3, 0, -1):
                     glow_surf = pygame.Surface((sidebar_w - 12 + g*4, card_h + g*4), pygame.SRCALPHA)
-                    glow_surf.fill((*glow_color, int(30 * g)))
+                    glow_surf.fill((*glow_color, int(25 * g)))
                     self.screen.blit(glow_surf, (sidebar_x + 6 - g*2, card_y - g*2))
-                pygame.draw.rect(self.screen, (50, 55, 70), (sidebar_x + 6, card_y, sidebar_w - 12, card_h), border_radius=10)
+                pygame.draw.rect(self.screen, (50, 55, 70), (sidebar_x + 6, card_y, sidebar_w - 12, card_h), border_radius=8)
             else:
-                pygame.draw.rect(self.screen, (35, 38, 50), (sidebar_x + 6, card_y, sidebar_w - 12, card_h), border_radius=10)
+                pygame.draw.rect(self.screen, (35, 38, 50), (sidebar_x + 6, card_y, sidebar_w - 12, card_h), border_radius=8)
             
-            # Progress ring
-            ring_x = sidebar_x + 32
-            ring_y = card_y + card_h // 2
-            ring_r = 16
+            # Colored accent bar on left
+            bar_height = card_h - 16
+            bar_y = card_y + 8
+            accent_alpha = 255 if is_active else 140
+            pygame.draw.rect(self.screen, (*color[:3], accent_alpha) if is_active else (color[0]//2, color[1]//2, color[2]//2), 
+                           (sidebar_x + 12, bar_y, 4, bar_height), border_radius=2)
             
-            # Background ring
-            pygame.draw.circle(self.screen, (50, 52, 65), (ring_x, ring_y), ring_r, width=3)
-            
-            # Progress arc (animated)
-            if total > 0:
-                progress = count / total
-                end_angle = -math.pi/2 + progress * 2 * math.pi
-                if progress > 0:
-                    points = [(ring_x, ring_y)]
-                    for angle in [a * 0.1 for a in range(int(-math.pi/2 * 10), int(end_angle * 10) + 1)]:
-                        x = ring_x + int(ring_r * math.cos(angle))
-                        y = ring_y + int(ring_r * math.sin(angle))
-                        points.append((x, y))
-                    if len(points) > 2:
-                        # Draw arc segments
-                        for i in range(len(points) - 1):
-                            pygame.draw.line(self.screen, color, points[i], points[i+1], 3)
-            
-            # Count in center
-            count_surf = self.fonts['status'].render(str(count), True, color if is_active else (160, 165, 180))
-            self.screen.blit(count_surf, (ring_x - count_surf.get_width()//2, ring_y - count_surf.get_height()//2))
-            
-            # Project name
+            # Project name (left aligned after accent bar)
             name_color = (240, 245, 255) if is_active else (140, 145, 160)
             name_surf = self.fonts['msg'].render(proj_name, True, name_color)
-            self.screen.blit(name_surf, (ring_x + ring_r + 10, card_y + card_h//2 - name_surf.get_height()//2))
+            self.screen.blit(name_surf, (sidebar_x + 24, card_y + card_h//2 - name_surf.get_height()//2))
             
-            card_y += card_h + 6
+            # Count badge on right (pill shape)
+            if count > 0:
+                count_text = str(count)
+                count_surf = self.fonts['status'].render(count_text, True, (255, 255, 255) if is_active else (180, 185, 200))
+                badge_w = max(28, count_surf.get_width() + 14)
+                badge_h = 22
+                badge_x = sidebar_x + sidebar_w - 18 - badge_w
+                badge_y = card_y + card_h//2 - badge_h//2
+                
+                # Badge background
+                badge_color = color if is_active else (60, 65, 80)
+                pygame.draw.rect(self.screen, badge_color, (badge_x, badge_y, badge_w, badge_h), border_radius=11)
+                
+                # Badge text
+                self.screen.blit(count_surf, (badge_x + badge_w//2 - count_surf.get_width()//2, 
+                                              badge_y + badge_h//2 - count_surf.get_height()//2))
+            
+            card_y += card_h + 8
         
         # ═══════════════════════════════════════════════════════════════
         # MAIN AREA - Focus card + task list (600px)

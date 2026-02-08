@@ -1333,7 +1333,27 @@ class DashboardApp:
                 title_font = self.fonts['menu_title']
                 is_editing = getattr(self, 'task_editing', False)
                 
-                if is_editing:
+                if getattr(self, 'task_saving', False):
+                    # Show saving spinner
+                    spinner_x = main_x + main_w // 2
+                    spinner_y = focus_y + 40
+                    
+                    # Spinning arc
+                    spin_angle = self.wow_anim_time * 5
+                    import math
+                    for i in range(8):
+                        angle = spin_angle + i * (math.pi / 4)
+                        intensity = 1.0 - (i / 8) * 0.7
+                        x = spinner_x + int(math.cos(angle) * 20)
+                        y = spinner_y + int(math.sin(angle) * 20)
+                        color = (int(100 * intensity), int(180 * intensity), int(140 * intensity))
+                        pygame.draw.circle(self.screen, color, (x, y), 4)
+                    
+                    # Saving text
+                    save_surf = self.fonts['msg'].render("Saving...", True, (100, 180, 140))
+                    self.screen.blit(save_surf, (spinner_x - save_surf.get_width() // 2, spinner_y + 30))
+                
+                elif is_editing:
                     # Show editable text with cursor
                     edit_text = getattr(self, 'task_edit_text', '')
                     cursor_pos = getattr(self, 'task_edit_cursor', len(edit_text))
@@ -3352,6 +3372,11 @@ class DashboardApp:
     def _handle_tasks_key(self, event):
         """Handle keyboard input for tasks panel"""
         
+        # Handle saving state (show spinner, wait for completion)
+        if getattr(self, 'task_saving', False):
+            # Don't accept input while saving
+            return
+        
         if self.task_editing:
             # Editing mode
             if event.key == pygame.K_RETURN:
@@ -3372,12 +3397,24 @@ class DashboardApp:
                     
                     if task:
                         task_id = task.get('id')
-                        if isinstance(task_id, int) and task_id > 1000000000:
-                            # New local task (timestamp ID) - add to Todoist
-                            self._todoist_add_task(self.task_edit_text.strip(), 'today')
-                        else:
-                            # Existing Todoist task - update it
-                            self._todoist_update_task(task_id, self.task_edit_text.strip())
+                        new_content = self.task_edit_text.strip()
+                        self.task_saving = True  # Show spinner
+                        self.task_editing = False
+                        
+                        # Run save in background thread
+                        import threading
+                        def save_task():
+                            try:
+                                if isinstance(task_id, int) and task_id > 1000000000:
+                                    self._todoist_add_task(new_content, 'today')
+                                else:
+                                    self._todoist_update_task(task_id, new_content)
+                            finally:
+                                self.task_saving = False
+                        
+                        thread = threading.Thread(target=save_task, daemon=True)
+                        thread.start()
+                        return
                 self.task_editing = False
             elif event.key == pygame.K_ESCAPE:
                 # Cancel edit - if new task, remove from local list

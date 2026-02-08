@@ -1172,17 +1172,6 @@ class DashboardApp:
         # Initialize animation state
         if not hasattr(self, 'home_anim'):
             self.home_anim = 0.0
-        if not hasattr(self, 'home_particles'):
-            self.home_particles = []
-            for _ in range(20):
-                self.home_particles.append([
-                    random.randint(0, SCREEN_WIDTH),  # x
-                    random.randint(0, SCREEN_HEIGHT), # y
-                    random.uniform(-0.2, 0.2),        # vx
-                    random.uniform(-0.3, -0.1),       # vy
-                    random.uniform(1.5, 3),           # size
-                    random.uniform(0, 6.28)           # phase
-                ])
         
         self.home_anim += 0.025
         stats = self.get_system_stats()
@@ -1200,25 +1189,6 @@ class DashboardApp:
             cg = int(15 + 5 * wave2 * progress)
             cb = int(28 + 12 * (1 - progress))
             pygame.draw.rect(self.screen, (cr, cg, cb), (0, y, SCREEN_WIDTH, 3))
-        
-        # ═══════════════════════════════════════════════════════════════
-        # FLOATING PARTICLES
-        # ═══════════════════════════════════════════════════════════════
-        for p in self.home_particles:
-            # p = [x, y, vx, vy, size, phase]
-            p[0] += p[2]  # x += vx
-            p[1] += p[3]  # y += vy
-            p[5] += 0.05  # phase
-            
-            if p[1] < -10:
-                p[1] = SCREEN_HEIGHT + 10
-                p[0] = random.randint(0, SCREEN_WIDTH)
-            if p[0] < -10 or p[0] > SCREEN_WIDTH + 10:
-                p[0] = random.randint(0, SCREEN_WIDTH)
-            
-            brightness = 0.5 + 0.5 * math.sin(p[5])
-            color = (int(120 + 80 * brightness), int(160 + 60 * brightness), int(220 + 35 * brightness))
-            pygame.draw.circle(self.screen, color, (int(p[0]), int(p[1])), int(p[4] * brightness + 1))
         
         # ═══════════════════════════════════════════════════════════════
         # HERO CLOCK - Massive, centered, glowing
@@ -1372,42 +1342,27 @@ class DashboardApp:
         up_surf = self.fonts['status'].render(stats['uptime'], True, (140, 180, 230))
         self.screen.blit(up_surf, (up_badge_x + 34 - up_surf.get_width() // 2, panel_y + 11))
         
-        # CPU Gauge - Large
-        cpu_cx = panel_x + 65
-        cpu_cy = panel_y + 85
-        cpu_r = 38
-        self._draw_premium_gauge(cpu_cx, cpu_cy, cpu_r, stats['cpu'], "CPU", 
+        # All three gauges same size, evenly spaced
+        gauge_r = 34
+        gauge_y = panel_y + 85
+        gauge_spacing = 100
+        
+        # CPU Gauge
+        cpu_cx = panel_x + 55
+        self._draw_premium_gauge(cpu_cx, gauge_y, gauge_r, stats['cpu'], "CPU", 
                                 (100, 220, 160) if stats['cpu'] < 50 else (240, 200, 80) if stats['cpu'] < 80 else (240, 100, 100))
         
-        # Memory Gauge - Large
-        mem_cx = panel_x + 175
-        mem_cy = panel_y + 85
-        mem_r = 38
-        self._draw_premium_gauge(mem_cx, mem_cy, mem_r, stats['mem'], "MEM",
+        # Memory Gauge
+        mem_cx = panel_x + 55 + gauge_spacing
+        self._draw_premium_gauge(mem_cx, gauge_y, gauge_r, stats['mem'], "MEM",
                                 (100, 220, 160) if stats['mem'] < 60 else (240, 200, 80) if stats['mem'] < 85 else (240, 100, 100))
         
-        # Temperature mini gauge
+        # Temperature Gauge - same size now
         temp = stats['temp']
-        temp_cx = panel_x + 260
-        temp_cy = panel_y + 85
+        temp_cx = panel_x + 55 + gauge_spacing * 2
+        temp_pct = int(min(temp, 85) / 85 * 100)
         temp_color = (100, 220, 160) if temp < 55 else (240, 200, 80) if temp < 70 else (240, 100, 100)
-        
-        pygame.draw.circle(self.screen, (30, 40, 55), (temp_cx, temp_cy), 28)
-        pygame.draw.circle(self.screen, (50, 65, 90), (temp_cx, temp_cy), 28, width=2)
-        
-        # Temperature arc
-        temp_pct = min(temp, 85) / 85
-        for i in range(int(temp_pct * 100)):
-            angle = -math.pi/2 + (i/100) * 2 * math.pi
-            x = temp_cx + int(22 * math.cos(angle))
-            y = temp_cy + int(22 * math.sin(angle))
-            pygame.draw.circle(self.screen, temp_color, (x, y), 2)
-        
-        temp_surf = self.fonts['msg'].render(f"{temp}C", True, temp_color)
-        self.screen.blit(temp_surf, (temp_cx - temp_surf.get_width()//2, temp_cy - 6))
-        
-        temp_label = self.fonts['status'].render("TEMP", True, (100, 120, 160))
-        self.screen.blit(temp_label, (temp_cx - temp_label.get_width()//2, temp_cy + 30))
+        self._draw_premium_gauge(temp_cx, gauge_y, gauge_r, temp_pct, "TEMP", temp_color, show_val=f"{temp}C")
         
         # ═══════════════════════════════════════════════════════════════
         # STATUS TILES - 2x2 Grid with icons
@@ -1448,29 +1403,24 @@ class DashboardApp:
                               "C", True)
         
         # ═══════════════════════════════════════════════════════════════
-        # ACTIVITY FEED - Recent messages/events
+        # CHAT PREVIEW - Last messages from chat
         # ═══════════════════════════════════════════════════════════════
         feed_y = tiles_y + tile_h + 12
         feed_h = SCREEN_HEIGHT - feed_y - 35
         
-        # Feed container
+        # Container
         feed_surf = pygame.Surface((SCREEN_WIDTH - 30, feed_h), pygame.SRCALPHA)
         feed_surf.fill((20, 28, 42, 200))
         self.screen.blit(feed_surf, (15, feed_y))
         pygame.draw.rect(self.screen, (50, 65, 95), (15, feed_y, SCREEN_WIDTH - 30, feed_h), width=1, border_radius=10)
         
-        # Feed header
-        feed_icon = self.fonts['msg'].render(">", True, (100, 150, 220))
-        self.screen.blit(feed_icon, (28, feed_y + 10))
-        feed_title = self.fonts['status'].render("RECENT ACTIVITY", True, (100, 130, 180))
-        self.screen.blit(feed_title, (48, feed_y + 12))
+        # Header
+        feed_title = self.fonts['status'].render("CHAT PREVIEW", True, (100, 130, 180))
+        self.screen.blit(feed_title, (28, feed_y + 12))
         
-        # Live indicator
-        live_pulse = 0.5 + 0.5 * math.sin(self.home_anim * 4)
-        live_color = (int(80 + 80 * live_pulse), int(200 * live_pulse + 55), int(120 + 40 * live_pulse))
-        pygame.draw.circle(self.screen, live_color, (SCREEN_WIDTH - 45, feed_y + 16), 5)
-        live_text = self.fonts['status'].render("LIVE", True, (100, 180, 140))
-        self.screen.blit(live_text, (SCREEN_WIDTH - 80, feed_y + 10))
+        # Press C hint
+        hint_surf = self.fonts['status'].render("Press C to chat", True, (70, 90, 130))
+        self.screen.blit(hint_surf, (SCREEN_WIDTH - hint_surf.get_width() - 35, feed_y + 12))
         
         # Messages
         if self.messages:
@@ -1482,26 +1432,24 @@ class DashboardApp:
                 
                 is_user = msg.role == 'user'
                 dot_color = (100, 150, 255) if is_user else (100, 220, 160)
-                prefix = "You" if is_user else "AI"
+                prefix = "You:" if is_user else "AI:"
                 
-                # Time indicator line
+                # Color bar
                 pygame.draw.rect(self.screen, dot_color, (28, msg_y + 2, 3, 16), border_radius=1)
                 
-                # Prefix badge
-                badge_w = 32
-                pygame.draw.rect(self.screen, (40, 50, 70), (40, msg_y, badge_w, 18), border_radius=4)
+                # Prefix
                 prefix_surf = self.fonts['status'].render(prefix, True, dot_color)
-                self.screen.blit(prefix_surf, (40 + (badge_w - prefix_surf.get_width())//2, msg_y + 2))
+                self.screen.blit(prefix_surf, (38, msg_y + 2))
                 
                 # Message text
-                text = msg.text[:68] + "..." if len(msg.text) > 68 else msg.text
+                text = msg.text[:65] + "..." if len(msg.text) > 65 else msg.text
                 text_surf = self.fonts['msg'].render(text, True, (190, 200, 220))
-                self.screen.blit(text_surf, (80, msg_y + 1))
+                self.screen.blit(text_surf, (75, msg_y + 1))
                 
                 msg_y += 26
         else:
-            empty_surf = self.fonts['msg'].render("No activity yet. Press F3 to start a conversation.", True, (80, 100, 140))
-            self.screen.blit(empty_surf, (40, feed_y + 45))
+            empty_surf = self.fonts['msg'].render("No messages yet. Press C or F3 to start chatting.", True, (80, 100, 140))
+            self.screen.blit(empty_surf, (28, feed_y + 45))
         
         # ═══════════════════════════════════════════════════════════════
         # NAVIGATION BAR - Bottom
@@ -1525,7 +1473,7 @@ class DashboardApp:
             
             nav_x += 70
     
-    def _draw_premium_gauge(self, cx, cy, r, pct, label, color):
+    def _draw_premium_gauge(self, cx, cy, r, pct, label, color, show_val=None):
         """Draw a premium circular gauge with glow"""
         import math
         
@@ -1561,12 +1509,10 @@ class DashboardApp:
                 y2 = cy + int(outer_r * math.sin(angle))
                 pygame.draw.line(self.screen, c, (x1, y1), (x2, y2), 3)
         
-        # Center value
-        pct_surf = self.fonts['title'].render(f"{pct}", True, color)
-        self.screen.blit(pct_surf, (cx - pct_surf.get_width()//2, cy - 12))
-        
-        pct_symbol = self.fonts['status'].render("%", True, (100, 120, 160))
-        self.screen.blit(pct_symbol, (cx + pct_surf.get_width()//2 - 2, cy - 6))
+        # Center value - use show_val if provided, otherwise show percentage
+        display_val = show_val if show_val else f"{pct}%"
+        pct_surf = self.fonts['msg'].render(display_val, True, color)
+        self.screen.blit(pct_surf, (cx - pct_surf.get_width()//2, cy - 8))
         
         # Label
         label_surf = self.fonts['status'].render(label, True, (110, 130, 170))
@@ -3730,6 +3676,15 @@ class DashboardApp:
         if event.key == pygame.K_g:
             # Toggle gateway connection
             self._toggle_gateway()
+        elif event.key == pygame.K_t:
+            # Switch to Tasks
+            self.switch_mode(MODE_TASKS)
+        elif event.key == pygame.K_c:
+            # Switch to Chat
+            self.switch_mode(MODE_CHAT)
+        elif event.key == pygame.K_k:
+            # Switch to Kanban
+            self.switch_mode(MODE_KANBAN)
                 
     def _handle_chat_key(self, event):
         if self.chat_menu_open:

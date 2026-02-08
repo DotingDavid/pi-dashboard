@@ -952,10 +952,18 @@ class DashboardApp:
                 'category': 'safe'
             },
             {
+                'label': '—',
+                'desc': 'Empty slot',
+                'cmd': '__none__',
+                'icon': '5',
+                'color': (60, 65, 80),
+                'category': 'disabled'
+            },
+            {
                 'label': 'Update System',
                 'desc': 'Pull latest code & install',
                 'cmd': 'cd ~/.openclaw && git pull && npm install',
-                'icon': '5',
+                'icon': '6',
                 'color': C['warning'],
                 'category': 'caution'
             },
@@ -963,7 +971,7 @@ class DashboardApp:
                 'label': 'Reboot Pi',
                 'desc': 'Restart the entire system',
                 'cmd': 'sudo reboot',
-                'icon': '6',
+                'icon': '7',
                 'color': C['error'],
                 'category': 'danger'
             },
@@ -971,7 +979,7 @@ class DashboardApp:
                 'label': 'Shutdown',
                 'desc': 'Power off completely',
                 'cmd': 'sudo shutdown -h now',
-                'icon': '7',
+                'icon': '8',
                 'color': C['error'],
                 'category': 'danger'
             },
@@ -980,12 +988,12 @@ class DashboardApp:
     def get_system_submenu(self):
         """Return system submenu items"""
         return [
-            {'label': 'Node Test', 'cmd': 'openclaw nodes status', 'icon': '1'},
-            {'label': 'Gateway Test', 'cmd': 'openclaw gateway status', 'icon': '2'},
-            {'label': 'Disk Space', 'cmd': "df -h / | awk 'NR==2 {print $3 \"/\" $2 \" (\" $5 \" used)\"}'", 'icon': '3'},
-            {'label': 'Gateway Restart', 'cmd': 'systemctl --user restart openclaw-gateway', 'icon': '4'},
-            {'label': 'Memory Usage', 'cmd': "free -h | awk 'NR==2 {print $3 \"/\" $2}'", 'icon': '5'},
-            {'label': 'CPU Temp', 'cmd': "vcgencmd measure_temp | cut -d= -f2", 'icon': '6'},
+            {'label': 'Node Test', 'cmd': 'openclaw nodes status', 'icon': '1', 'confirm': False},
+            {'label': 'Gateway Test', 'cmd': 'openclaw gateway status', 'icon': '2', 'confirm': False},
+            {'label': 'Disk Space', 'cmd': "df -h / | awk 'NR==2 {print $3 \"/\" $2 \" (\" $5 \" used)\"}'", 'icon': '3', 'confirm': False},
+            {'label': 'Gateway Restart', 'cmd': 'systemctl --user restart openclaw-gateway', 'icon': '4', 'confirm': True},
+            {'label': 'Memory Usage', 'cmd': "free -h | awk 'NR==2 {print $3 \"/\" $2}'", 'icon': '5', 'confirm': False},
+            {'label': 'CPU Temp', 'cmd': "vcgencmd measure_temp | cut -d= -f2", 'icon': '6', 'confirm': False},
         ]
         
     def execute_command(self, cmd_idx):
@@ -1818,6 +1826,10 @@ class DashboardApp:
         if getattr(self, 'system_submenu_open', False):
             self._draw_system_submenu()
         
+        # System submenu confirmation
+        if getattr(self, 'system_submenu_confirm', None):
+            self._draw_submenu_confirm()
+        
         # Footer
         help_text = "1-8: Quick Run  |  Arrows: Navigate  |  Enter: Execute"
         help_surf = self.fonts['status'].render(help_text, True, C['text_muted'])
@@ -1871,6 +1883,43 @@ class DashboardApp:
         # Hint
         hint_surf = self.fonts['status'].render("1-6 Quick • Arrows • Enter • Esc", True, (100, 105, 125))
         self.screen.blit(hint_surf, (box_x + (box_w - hint_surf.get_width()) // 2, box_y + box_h - 25))
+    
+    def _draw_submenu_confirm(self):
+        """Draw confirmation dialog for system submenu item"""
+        item = getattr(self, 'system_submenu_confirm', None)
+        if not item:
+            return
+        
+        # Dim background
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 200))
+        self.screen.blit(overlay, (0, 0))
+        
+        # Confirmation box
+        box_w, box_h = 400, 150
+        box_x = (SCREEN_WIDTH - box_w) // 2
+        box_y = (SCREEN_HEIGHT - box_h) // 2
+        
+        pygame.draw.rect(self.screen, (35, 40, 55), (box_x, box_y, box_w, box_h), border_radius=12)
+        pygame.draw.rect(self.screen, C['warning'], (box_x, box_y, box_w, box_h), width=3, border_radius=12)
+        
+        # Warning icon
+        warn_surf = self.fonts['menu_title'].render("!", True, C['warning'])
+        pygame.draw.circle(self.screen, (60, 55, 40), (box_x + 40, box_y + 45), 22)
+        self.screen.blit(warn_surf, (box_x + 32, box_y + 28))
+        
+        # Title
+        title_surf = self.fonts['title'].render("Confirm Action", True, C['warning'])
+        self.screen.blit(title_surf, (box_x + 75, box_y + 25))
+        
+        # Message
+        msg = f"Are you sure you want to run '{item['label']}'?"
+        msg_surf = self.fonts['msg'].render(msg, True, C['text'])
+        self.screen.blit(msg_surf, (box_x + 30, box_y + 70))
+        
+        # Buttons hint
+        hint_surf = self.fonts['status'].render("Enter/Y = Yes    Esc/N = Cancel", True, C['text_muted'])
+        self.screen.blit(hint_surf, (box_x + (box_w - hint_surf.get_width()) // 2, box_y + box_h - 30))
     
     def _draw_command_running(self):
         """Draw running command indicator"""
@@ -3845,7 +3894,30 @@ class DashboardApp:
             elif event.key in (pygame.K_DELETE, pygame.K_BACKSPACE):
                 self.delete_task()
                 
+    def _execute_submenu_item(self, item):
+        """Execute a system submenu item, with confirmation if needed"""
+        if item.get('confirm'):
+            self.system_submenu_open = False
+            self.system_submenu_confirm = item
+        else:
+            self.system_submenu_open = False
+            self.command_running = item['label']
+            self.command_result = None
+            threading.Thread(target=self._run_command_async, args=({'cmd': item['cmd'], 'label': item['label']},), daemon=True).start()
+    
     def _handle_commands_key(self, event):
+        # Handle system submenu confirmation
+        if getattr(self, 'system_submenu_confirm', None):
+            if event.key == pygame.K_RETURN or event.key == pygame.K_y:
+                item = self.system_submenu_confirm
+                self.system_submenu_confirm = None
+                self.command_running = item['label']
+                self.command_result = None
+                threading.Thread(target=self._run_command_async, args=({'cmd': item['cmd'], 'label': item['label']},), daemon=True).start()
+            elif event.key == pygame.K_ESCAPE or event.key == pygame.K_n:
+                self.system_submenu_confirm = None
+            return
+        
         # Handle system submenu
         if getattr(self, 'system_submenu_open', False):
             submenu = self.get_system_submenu()
@@ -3857,18 +3929,12 @@ class DashboardApp:
                 self.system_submenu_selection = min(len(submenu) - 1, self.system_submenu_selection + 1)
             elif event.key == pygame.K_RETURN:
                 item = submenu[self.system_submenu_selection]
-                self.system_submenu_open = False
-                self.command_running = item['label']
-                self.command_result = None
-                threading.Thread(target=self._run_command_async, args=({'cmd': item['cmd'], 'label': item['label']},), daemon=True).start()
+                self._execute_submenu_item(item)
             elif event.key in (pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5, pygame.K_6):
                 idx = event.key - pygame.K_1
                 if idx < len(submenu):
                     item = submenu[idx]
-                    self.system_submenu_open = False
-                    self.command_running = item['label']
-                    self.command_result = None
-                    threading.Thread(target=self._run_command_async, args=({'cmd': item['cmd'], 'label': item['label']},), daemon=True).start()
+                    self._execute_submenu_item(item)
             return
         
         # Handle confirmation dialog

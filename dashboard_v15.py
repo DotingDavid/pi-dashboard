@@ -1486,7 +1486,9 @@ class DashboardApp:
         title_surf2 = self.fonts['status'].render("ACTIVE PROJECTS", True, (120, 220, 170))
         self.screen.blit(title_surf2, (right_x + 22, panel_y + 10))
         
-        # Get active kanban cards
+        # Get active kanban cards (load if needed)
+        if not hasattr(self, 'kanban_data'):
+            self._load_kanban_data()
         active_cards = []
         for col in ['Active', 'Stuck']:
             for card in self.kanban_data.get(col, [])[:3]:

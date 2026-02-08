@@ -1454,26 +1454,11 @@ class DashboardApp:
             self.screen.blit(empty_surf, (28, feed_y + 45))
         
         # ═══════════════════════════════════════════════════════════════
-        # NAVIGATION BAR - Bottom
+        # FOOTER - Simple navigation hints
         # ═══════════════════════════════════════════════════════════════
-        nav_y = SCREEN_HEIGHT - 28
-        nav_items = [("F1", "Home", True), ("F2", "Tasks", False), ("F3", "Chat", False), 
-                     ("F4", "Kanban", False), ("F5", "Cmds", False)]
-        
-        total_w = sum(55 for _ in nav_items) + (len(nav_items) - 1) * 15
-        nav_x = (SCREEN_WIDTH - total_w) // 2
-        
-        for key, label, is_active in nav_items:
-            if is_active:
-                pygame.draw.rect(self.screen, (50, 70, 110), (nav_x - 5, nav_y - 2, 55, 22), border_radius=6)
-            
-            key_surf = self.fonts['status'].render(key, True, (140, 170, 220) if is_active else (70, 90, 130))
-            self.screen.blit(key_surf, (nav_x, nav_y))
-            
-            label_surf = self.fonts['status'].render(label, True, (180, 200, 240) if is_active else (90, 110, 150))
-            self.screen.blit(label_surf, (nav_x + 22, nav_y))
-            
-            nav_x += 70
+        hint = "T Tasks  C Chat  K Kanban  G Gateway"
+        hint_surf = self.fonts['status'].render(hint, True, (80, 90, 115))
+        self.screen.blit(hint_surf, ((SCREEN_WIDTH - hint_surf.get_width())//2, SCREEN_HEIGHT - 18))
     
     def _draw_premium_gauge(self, cx, cy, r, pct, label, color, show_val=None):
         """Draw a premium circular gauge with glow"""
@@ -1969,28 +1954,24 @@ class DashboardApp:
                 self.screen.blit(down_surf, (main_x + main_w//2 - down_surf.get_width()//2, row_y + 4))
         
         # ═══════════════════════════════════════════════════════════════
-        # FOOTER - Stylish hints + sync indicator
+        # FOOTER
         # ═══════════════════════════════════════════════════════════════
-        if self.task_editing:
-            hint = "Enter: Save  •  Esc: Cancel"
-        else:
-            hint = "↑↓ Navigate  •  Space Complete  •  1-5 Filter  •  N New  •  R Sync"
-        hint_surf = self.fonts['status'].render(hint, True, (90, 95, 115))
-        self.screen.blit(hint_surf, ((SCREEN_WIDTH - hint_surf.get_width())//2, SCREEN_HEIGHT - 18))
+        footer_y = SCREEN_HEIGHT - 18
         
-        # Sync indicator in bottom-right of panel
+        # Sync indicator on left
         sync_status = getattr(self, 'todoist_sync_status', 'live')
-        if sync_status == 'live':
-            sync_text = "● Synced"
-            sync_color = (80, 200, 120)
-        elif sync_status == 'syncing':
-            sync_text = "◐ Syncing"
-            sync_color = (220, 180, 60)
-        else:
-            sync_text = "✗ Error"
-            sync_color = (220, 80, 80)
+        sync_text = "●" if sync_status == 'live' else "◐" if sync_status == 'syncing' else "✗"
+        sync_color = (80, 200, 120) if sync_status == 'live' else (220, 180, 60) if sync_status == 'syncing' else (220, 80, 80)
         sync_surf = self.fonts['status'].render(sync_text, True, sync_color)
-        self.screen.blit(sync_surf, (SCREEN_WIDTH - sync_surf.get_width() - 12, SCREEN_HEIGHT - 18))
+        self.screen.blit(sync_surf, (12, footer_y))
+        
+        # Hints centered
+        if self.task_editing:
+            hint = "Enter Save  Esc Cancel"
+        else:
+            hint = "Space Done  N New  R Sync  1-5 Filter"
+        hint_surf = self.fonts['status'].render(hint, True, (80, 90, 115))
+        self.screen.blit(hint_surf, ((SCREEN_WIDTH - hint_surf.get_width())//2, footer_y))
 
 
     def draw_commands(self):
@@ -2092,10 +2073,9 @@ class DashboardApp:
             self._draw_submenu_confirm()
         
         # Footer
-        help_text = "1-8: Quick Run  |  Arrows: Navigate  |  Enter: Execute"
-        help_surf = self.fonts['status'].render(help_text, True, C['text_muted'])
-        help_x = (SCREEN_WIDTH - help_surf.get_width()) // 2
-        self.screen.blit(help_surf, (help_x, SCREEN_HEIGHT - 18))
+        hint = "1-8 Quick  Arrows Nav  Enter Run"
+        hint_surf = self.fonts['status'].render(hint, True, (80, 90, 115))
+        self.screen.blit(hint_surf, ((SCREEN_WIDTH - hint_surf.get_width())//2, SCREEN_HEIGHT - 18))
     
     def _draw_system_submenu(self):
         """Draw system submenu popup"""
@@ -2662,17 +2642,17 @@ class DashboardApp:
         if getattr(self, 'kanban_delete_mode', False):
             self._draw_delete_confirm()
         
-        # Footer hints
-        footer_y = SCREEN_HEIGHT - 14
+        # Footer
+        footer_y = SCREEN_HEIGHT - 18
         if hasattr(self, 'kanban_holding') and self.kanban_holding:
-            hint = "←→ Move  •  Space Drop  •  Esc Cancel"
+            hint = "Arrows Move  Space Drop  Esc Cancel"
             hint_color = (220, 180, 80)
         elif self.kanban_in_fasttrack:
-            hint = "←→ Card  •  ↓ Cols  •  Space Grab  •  P Pri  •  N New  •  D Del  •  / Search"
+            hint = "Arrows Nav  Space Grab  N New  P Pri  D Del  / Search"
             hint_color = (255, 150, 120)
         else:
-            hint = "Arrows  •  Space Grab  •  P Pri  •  N New  •  D Del  •  / Search  •  Tab Board"
-            hint_color = (90, 95, 115)
+            hint = "Arrows Nav  Space Grab  N New  P Pri  D Del  / Search"
+            hint_color = (80, 90, 115)
         hint_surf = self.fonts['status'].render(hint, True, hint_color)
         self.screen.blit(hint_surf, ((SCREEN_WIDTH - hint_surf.get_width())//2, footer_y))
 

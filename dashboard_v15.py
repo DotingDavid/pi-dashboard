@@ -1430,42 +1430,51 @@ class DashboardApp:
         title_surf = self.fonts['status'].render("TOP TASKS", True, (255, 200, 120))
         self.screen.blit(title_surf, (left_x + 22, panel_y + 10))
         
-        # Get urgent tasks
-        urgent_tasks = []
-        for task in self.tasks[:8]:
-            if task.get('due') or 'today' in str(task.get('labels', [])).lower():
-                urgent_tasks.append(task)
-        if len(urgent_tasks) < 4:
-            for task in self.tasks[:8]:
-                if task not in urgent_tasks:
+        # Get urgent tasks (with error handling)
+        try:
+            urgent_tasks = []
+            tasks_list = self.tasks if self.tasks else []
+            for task in tasks_list[:8]:
+                if task.get('due') or 'today' in str(task.get('labels', [])).lower():
                     urgent_tasks.append(task)
-                if len(urgent_tasks) >= 4:
-                    break
-        
-        task_y = panel_y + 32
-        for i, task in enumerate(urgent_tasks[:4]):
-            # Priority indicator
-            p = task.get('priority', 1)
-            p_color = (255, 90, 90) if p >= 4 else (255, 180, 80) if p >= 3 else (100, 180, 255)
-            pygame.draw.circle(self.screen, p_color, (left_x + 20, task_y + 10), 4)
+            if len(urgent_tasks) < 4:
+                for task in tasks_list[:8]:
+                    if task not in urgent_tasks:
+                        urgent_tasks.append(task)
+                    if len(urgent_tasks) >= 4:
+                        break
             
-            # Task name
-            name = task.get('content', '')[:28]
-            if len(task.get('content', '')) > 28:
-                name += '...'
-            name_surf = self.fonts['msg'].render(name, True, (220, 230, 245))
-            self.screen.blit(name_surf, (left_x + 32, task_y + 2))
+            task_y = panel_y + 32
+            for i, task in enumerate(urgent_tasks[:4]):
+                # Priority indicator
+                p = task.get('priority', 1)
+                p_color = (255, 90, 90) if p >= 4 else (255, 180, 80) if p >= 3 else (100, 180, 255)
+                pygame.draw.circle(self.screen, p_color, (left_x + 20, task_y + 10), 4)
+                
+                # Task name
+                name = task.get('content', '')[:28]
+                if len(task.get('content', '')) > 28:
+                    name += '...'
+                name_surf = self.fonts['msg'].render(name, True, (220, 230, 245))
+                self.screen.blit(name_surf, (left_x + 32, task_y + 2))
+                
+                # Due date if exists
+                due_val = task.get('due')
+                if due_val:
+                    if isinstance(due_val, dict):
+                        due = due_val.get('string', '')[:10]
+                    else:
+                        due = str(due_val)[:10]
+                    due_surf = self.fonts['status'].render(due, True, (120, 140, 170))
+                    self.screen.blit(due_surf, (left_x + panel_w - due_surf.get_width() - 15, task_y + 4))
+                
+                task_y += 28
             
-            # Due date if exists
-            if task.get('due'):
-                due = task['due'].get('string', '')[:10] if isinstance(task['due'], dict) else str(task['due'])[:10]
-                due_surf = self.fonts['status'].render(due, True, (120, 140, 170))
-                self.screen.blit(due_surf, (left_x + panel_w - due_surf.get_width() - 15, task_y + 4))
-            
-            task_y += 28
-        
-        if not urgent_tasks:
-            empty_surf = self.fonts['msg'].render("All clear!", True, (100, 180, 130))
+            if not urgent_tasks:
+                empty_surf = self.fonts['msg'].render("All clear!", True, (100, 180, 130))
+                self.screen.blit(empty_surf, (left_x + 22, panel_y + 50))
+        except Exception:
+            empty_surf = self.fonts['msg'].render("Loading tasks...", True, (100, 140, 160))
             self.screen.blit(empty_surf, (left_x + 22, panel_y + 50))
         
         # ─────────────────────────────────────────────────────────────
@@ -1486,36 +1495,40 @@ class DashboardApp:
         title_surf2 = self.fonts['status'].render("ACTIVE PROJECTS", True, (120, 220, 170))
         self.screen.blit(title_surf2, (right_x + 22, panel_y + 10))
         
-        # Get active kanban cards (load if needed)
-        if not hasattr(self, 'kanban_data'):
-            self._load_kanban_data()
-        active_cards = []
-        for col in ['Active', 'Stuck']:
-            for card in self.kanban_data.get(col, [])[:3]:
-                active_cards.append((col, card))
-        
-        card_y = panel_y + 32
-        for col_name, card in active_cards[:4]:
-            # Column indicator
-            col_color = (60, 180, 100) if col_name == 'Active' else (200, 70, 70)
-            pygame.draw.rect(self.screen, col_color, (right_x + 14, card_y + 3, 8, 14), border_radius=2)
+        # Get active kanban cards (with error handling)
+        try:
+            if not hasattr(self, 'kanban_data') or not self.kanban_data:
+                self._load_kanban_data()
+            active_cards = []
+            for col in ['Active', 'Stuck']:
+                for card in self.kanban_data.get(col, [])[:3]:
+                    active_cards.append((col, card))
             
-            # Card title
-            title = card.get('title', '')[:26]
-            if len(card.get('title', '')) > 26:
-                title += '...'
-            title_surf = self.fonts['msg'].render(title, True, (220, 230, 245))
-            self.screen.blit(title_surf, (right_x + 30, card_y + 2))
+            card_y = panel_y + 32
+            for col_name, card in active_cards[:4]:
+                # Column indicator
+                col_color = (60, 180, 100) if col_name == 'Active' else (200, 70, 70)
+                pygame.draw.rect(self.screen, col_color, (right_x + 14, card_y + 3, 8, 14), border_radius=2)
+                
+                # Card title
+                title = card.get('title', '')[:26]
+                if len(card.get('title', '')) > 26:
+                    title += '...'
+                title_surf = self.fonts['msg'].render(title, True, (220, 230, 245))
+                self.screen.blit(title_surf, (right_x + 30, card_y + 2))
+                
+                # Priority dot
+                priority = card.get('priority', '🟡')
+                p_color = (255, 90, 90) if priority in ['🔴', 'red'] else (255, 200, 80) if priority in ['🟡', 'yellow'] else (100, 200, 130)
+                pygame.draw.circle(self.screen, p_color, (right_x + panel_w - 20, card_y + 10), 4)
+                
+                card_y += 28
             
-            # Priority dot
-            priority = card.get('priority', '🟡')
-            p_color = (255, 90, 90) if priority in ['🔴', 'red'] else (255, 200, 80) if priority in ['🟡', 'yellow'] else (100, 200, 130)
-            pygame.draw.circle(self.screen, p_color, (right_x + panel_w - 20, card_y + 10), 4)
-            
-            card_y += 28
-        
-        if not active_cards:
-            empty_surf = self.fonts['msg'].render("No active projects", True, (100, 140, 160))
+            if not active_cards:
+                empty_surf = self.fonts['msg'].render("No active projects", True, (100, 140, 160))
+                self.screen.blit(empty_surf, (right_x + 22, panel_y + 50))
+        except Exception:
+            empty_surf = self.fonts['msg'].render("Loading projects...", True, (100, 140, 160))
             self.screen.blit(empty_surf, (right_x + 22, panel_y + 50))
         
         # ═══════════════════════════════════════════════════════════════

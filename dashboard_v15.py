@@ -429,6 +429,24 @@ class DashboardApp:
         except:
             self.todoist_sync_status = 'error'
             return False
+    
+    def _todoist_update_task(self, task_id, new_content):
+        """Update/rename a task in Todoist"""
+        try:
+            self.todoist_sync_status = 'syncing'
+            # Use todoist modify command
+            cmd = ['todoist', 'modify', str(task_id), '--content', new_content]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                self.todoist_sync_status = 'live'
+                self._load_todoist_tasks()  # Refresh
+                return True
+            else:
+                self.todoist_sync_status = 'error'
+                return False
+        except:
+            self.todoist_sync_status = 'error'
+            return False
             
     def add_task(self):
         """Add a new task and enter edit mode"""
@@ -3311,13 +3329,27 @@ class DashboardApp:
             if event.key == pygame.K_RETURN:
                 # Save to Todoist
                 if self.task_edit_text.strip():
-                    task = self.tasks[self.task_selected] if self.tasks and 0 <= self.task_selected < len(self.tasks) else None
-                    if task and isinstance(task.get('id'), int):
-                        # New local task - add to Todoist
-                        self._todoist_add_task(self.task_edit_text.strip(), 'today')
-                    else:
-                        # Existing Todoist task - can't edit via CLI easily, just refresh
-                        self._load_todoist_tasks()
+                    # Get the actual task from display list
+                    display_list = []
+                    task_expanded = getattr(self, 'task_expanded', set())
+                    for task in self.tasks:
+                        display_list.append({'task': task, 'indent': 0})
+                        if task.get('subtasks') and task['id'] in task_expanded:
+                            for sub in task.get('subtasks', []):
+                                display_list.append({'task': sub, 'indent': 1})
+                    
+                    task = None
+                    if display_list and 0 <= self.task_selected < len(display_list):
+                        task = display_list[self.task_selected]['task']
+                    
+                    if task:
+                        task_id = task.get('id')
+                        if isinstance(task_id, int) and task_id > 1000000000:
+                            # New local task (timestamp ID) - add to Todoist
+                            self._todoist_add_task(self.task_edit_text.strip(), 'today')
+                        else:
+                            # Existing Todoist task - update it
+                            self._todoist_update_task(task_id, self.task_edit_text.strip())
                 self.task_editing = False
             elif event.key == pygame.K_ESCAPE:
                 # Cancel edit - if new task, remove from local list

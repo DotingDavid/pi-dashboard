@@ -1169,107 +1169,56 @@ class DashboardApp:
         import math
         import random
         
-        # Initialize animation state - check each attribute separately
+        # Initialize animation state
         if not hasattr(self, 'home_anim'):
-            self.home_anim = 0
-        
-        if not hasattr(self, 'home_particles') or not self.home_particles:
+            self.home_anim = 0.0
+        if not hasattr(self, 'home_particles'):
             self.home_particles = []
-            # Floating particles
-            for _ in range(25):
-                self.home_particles.append({
-                    'x': random.randint(0, SCREEN_WIDTH),
-                    'y': random.randint(0, SCREEN_HEIGHT),
-                    'vx': random.uniform(-0.2, 0.2),
-                    'vy': random.uniform(-0.3, -0.1),
-                    'size': random.uniform(1.5, 4),
-                    'hue': random.uniform(0, 1),
-                    'phase': random.uniform(0, math.pi * 2)
-                })
-        
-        if not hasattr(self, 'home_orbs') or not self.home_orbs:
-            self.home_orbs = []
-            # Glowing orbs (larger, slower)
-            for _ in range(5):
-                self.home_orbs.append({
-                    'x': random.randint(100, SCREEN_WIDTH - 100),
-                    'y': random.randint(100, SCREEN_HEIGHT - 100),
-                    'vx': random.uniform(-0.15, 0.15),
-                    'vy': random.uniform(-0.15, 0.15),
-                    'size': random.uniform(40, 80),
-                    'hue': random.uniform(0.5, 0.7),
-                    'phase': random.uniform(0, math.pi * 2)
-                })
+            for _ in range(20):
+                self.home_particles.append([
+                    random.randint(0, SCREEN_WIDTH),  # x
+                    random.randint(0, SCREEN_HEIGHT), # y
+                    random.uniform(-0.2, 0.2),        # vx
+                    random.uniform(-0.3, -0.1),       # vy
+                    random.uniform(1.5, 3),           # size
+                    random.uniform(0, 6.28)           # phase
+                ])
         
         self.home_anim += 0.025
         stats = self.get_system_stats()
         now = datetime.now()
         
         # ═══════════════════════════════════════════════════════════════
-        # DEEP SPACE GRADIENT BACKGROUND
+        # GRADIENT BACKGROUND
         # ═══════════════════════════════════════════════════════════════
         wave1 = math.sin(self.home_anim * 0.3) * 0.5 + 0.5
         wave2 = math.sin(self.home_anim * 0.2 + 1) * 0.5 + 0.5
         
-        for y in range(0, SCREEN_HEIGHT, 2):
+        for y in range(0, SCREEN_HEIGHT, 3):
             progress = y / SCREEN_HEIGHT
-            # Rich deep blue/purple/teal gradient
-            r = int(8 + 12 * wave1 * (1 - progress) + 5 * progress)
-            g = int(12 + 8 * wave2 * progress)
-            b = int(25 + 20 * (1 - progress) + 10 * wave1 * progress)
-            pygame.draw.line(self.screen, (r, g, b), (0, y), (SCREEN_WIDTH, y))
+            cr = int(12 + 8 * wave1 * (1 - progress))
+            cg = int(15 + 5 * wave2 * progress)
+            cb = int(28 + 12 * (1 - progress))
+            pygame.draw.rect(self.screen, (cr, cg, cb), (0, y, SCREEN_WIDTH, 3))
         
         # ═══════════════════════════════════════════════════════════════
-        # GLOWING ORBS (Background atmosphere)
-        # ═══════════════════════════════════════════════════════════════
-        for orb in self.home_orbs:
-            orb['x'] += orb['vx']
-            orb['y'] += orb['vy']
-            orb['phase'] += 0.02
-            
-            # Bounce off edges
-            if orb['x'] < 50 or orb['x'] > SCREEN_WIDTH - 50:
-                orb['vx'] *= -1
-            if orb['y'] < 50 or orb['y'] > SCREEN_HEIGHT - 50:
-                orb['vy'] *= -1
-            
-            # Pulsing glow
-            pulse = 0.3 + 0.2 * math.sin(orb['phase'])
-            size = int(orb['size'] * (0.8 + 0.2 * math.sin(orb['phase'] * 0.5)))
-            
-            # Create radial gradient orb
-            orb_surf = pygame.Surface((size * 2, size * 2), pygame.SRCALPHA)
-            for r in range(size, 0, -2):
-                alpha = int(15 * pulse * (r / size))
-                hue = orb['hue']
-                color = (int(60 * hue + 30), int(80 + 40 * hue), int(180 - 40 * hue), alpha)
-                pygame.draw.circle(orb_surf, color, (size, size), r)
-            self.screen.blit(orb_surf, (int(orb['x'] - size), int(orb['y'] - size)))
-        
-        # ═══════════════════════════════════════════════════════════════
-        # FLOATING PARTICLES (Stars/dust)
+        # FLOATING PARTICLES
         # ═══════════════════════════════════════════════════════════════
         for p in self.home_particles:
-            p['x'] += p['vx']
-            p['y'] += p['vy']
-            p['phase'] += 0.05
+            # p = [x, y, vx, vy, size, phase]
+            p[0] += p[2]  # x += vx
+            p[1] += p[3]  # y += vy
+            p[5] += 0.05  # phase
             
-            if p['y'] < -10:
-                p['y'] = SCREEN_HEIGHT + 10
-                p['x'] = random.randint(0, SCREEN_WIDTH)
-            if p['x'] < -10 or p['x'] > SCREEN_WIDTH + 10:
-                p['x'] = random.randint(0, SCREEN_WIDTH)
+            if p[1] < -10:
+                p[1] = SCREEN_HEIGHT + 10
+                p[0] = random.randint(0, SCREEN_WIDTH)
+            if p[0] < -10 or p[0] > SCREEN_WIDTH + 10:
+                p[0] = random.randint(0, SCREEN_WIDTH)
             
-            # Twinkling effect
-            brightness = 0.4 + 0.6 * math.sin(p['phase'])
-            size = p['size'] * (0.7 + 0.3 * brightness)
-            
-            # Color based on hue
-            r = int(150 + 100 * p['hue'] * brightness)
-            g = int(180 + 70 * brightness)
-            b = int(255 * brightness)
-            
-            pygame.draw.circle(self.screen, (r, g, b), (int(p['x']), int(p['y'])), int(size))
+            brightness = 0.5 + 0.5 * math.sin(p[5])
+            color = (int(120 + 80 * brightness), int(160 + 60 * brightness), int(220 + 35 * brightness))
+            pygame.draw.circle(self.screen, color, (int(p[0]), int(p[1])), int(p[4] * brightness + 1))
         
         # ═══════════════════════════════════════════════════════════════
         # HERO CLOCK - Massive, centered, glowing

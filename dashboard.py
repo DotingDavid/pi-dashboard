@@ -1165,360 +1165,517 @@ class DashboardApp:
             pygame.draw.rect(self.screen, color, (x, y, fill_w, h), border_radius=3)
     
     def draw_dashboard(self):
-        """WOW Home Screen - Stunning animated dashboard"""
+        """WOW Home Screen v5 - Ultimate Edition"""
         import math
+        import random
         
         # Initialize animation state
         if not hasattr(self, 'home_anim'):
             self.home_anim = 0
             self.home_particles = []
-            # Create ambient particles
-            import random
-            for _ in range(15):
+            self.home_orbs = []
+            # Floating particles
+            for _ in range(25):
                 self.home_particles.append({
                     'x': random.randint(0, SCREEN_WIDTH),
                     'y': random.randint(0, SCREEN_HEIGHT),
-                    'vx': random.uniform(-0.3, 0.3),
-                    'vy': random.uniform(-0.2, -0.5),
-                    'size': random.uniform(1, 3),
-                    'alpha': random.randint(20, 60)
+                    'vx': random.uniform(-0.2, 0.2),
+                    'vy': random.uniform(-0.3, -0.1),
+                    'size': random.uniform(1.5, 4),
+                    'hue': random.uniform(0, 1),
+                    'phase': random.uniform(0, math.pi * 2)
+                })
+            # Glowing orbs (larger, slower)
+            for _ in range(5):
+                self.home_orbs.append({
+                    'x': random.randint(100, SCREEN_WIDTH - 100),
+                    'y': random.randint(100, SCREEN_HEIGHT - 100),
+                    'vx': random.uniform(-0.15, 0.15),
+                    'vy': random.uniform(-0.15, 0.15),
+                    'size': random.uniform(40, 80),
+                    'hue': random.uniform(0.5, 0.7),
+                    'phase': random.uniform(0, math.pi * 2)
                 })
         
-        self.home_anim += 0.02
+        self.home_anim += 0.025
         stats = self.get_system_stats()
         now = datetime.now()
         
         # ═══════════════════════════════════════════════════════════════
-        # ANIMATED GRADIENT BACKGROUND
+        # DEEP SPACE GRADIENT BACKGROUND
         # ═══════════════════════════════════════════════════════════════
-        # Subtle animated gradient overlay
-        gradient_phase = math.sin(self.home_anim * 0.5) * 0.5 + 0.5
-        for y in range(0, SCREEN_HEIGHT, 4):
+        wave1 = math.sin(self.home_anim * 0.3) * 0.5 + 0.5
+        wave2 = math.sin(self.home_anim * 0.2 + 1) * 0.5 + 0.5
+        
+        for y in range(0, SCREEN_HEIGHT, 2):
             progress = y / SCREEN_HEIGHT
-            # Deep blue to purple gradient that shifts
-            r = int(15 + 10 * gradient_phase * (1 - progress))
-            g = int(18 + 5 * (1 - gradient_phase) * progress)
-            b = int(28 + 15 * gradient_phase * progress)
-            pygame.draw.rect(self.screen, (r, g, b), (0, y, SCREEN_WIDTH, 4))
+            # Rich deep blue/purple/teal gradient
+            r = int(8 + 12 * wave1 * (1 - progress) + 5 * progress)
+            g = int(12 + 8 * wave2 * progress)
+            b = int(25 + 20 * (1 - progress) + 10 * wave1 * progress)
+            pygame.draw.line(self.screen, (r, g, b), (0, y), (SCREEN_WIDTH, y))
         
         # ═══════════════════════════════════════════════════════════════
-        # AMBIENT PARTICLES
+        # GLOWING ORBS (Background atmosphere)
         # ═══════════════════════════════════════════════════════════════
-        import random
+        for orb in self.home_orbs:
+            orb['x'] += orb['vx']
+            orb['y'] += orb['vy']
+            orb['phase'] += 0.02
+            
+            # Bounce off edges
+            if orb['x'] < 50 or orb['x'] > SCREEN_WIDTH - 50:
+                orb['vx'] *= -1
+            if orb['y'] < 50 or orb['y'] > SCREEN_HEIGHT - 50:
+                orb['vy'] *= -1
+            
+            # Pulsing glow
+            pulse = 0.3 + 0.2 * math.sin(orb['phase'])
+            size = int(orb['size'] * (0.8 + 0.2 * math.sin(orb['phase'] * 0.5)))
+            
+            # Create radial gradient orb
+            orb_surf = pygame.Surface((size * 2, size * 2), pygame.SRCALPHA)
+            for r in range(size, 0, -2):
+                alpha = int(15 * pulse * (r / size))
+                hue = orb['hue']
+                color = (int(60 * hue + 30), int(80 + 40 * hue), int(180 - 40 * hue), alpha)
+                pygame.draw.circle(orb_surf, color, (size, size), r)
+            self.screen.blit(orb_surf, (int(orb['x'] - size), int(orb['y'] - size)))
+        
+        # ═══════════════════════════════════════════════════════════════
+        # FLOATING PARTICLES (Stars/dust)
+        # ═══════════════════════════════════════════════════════════════
         for p in self.home_particles:
             p['x'] += p['vx']
             p['y'] += p['vy']
+            p['phase'] += 0.05
+            
             if p['y'] < -10:
                 p['y'] = SCREEN_HEIGHT + 10
                 p['x'] = random.randint(0, SCREEN_WIDTH)
             if p['x'] < -10 or p['x'] > SCREEN_WIDTH + 10:
                 p['x'] = random.randint(0, SCREEN_WIDTH)
             
-            alpha = int(p['alpha'] * (0.5 + 0.5 * math.sin(self.home_anim * 2 + p['x'])))
-            particle_surf = pygame.Surface((int(p['size'] * 2), int(p['size'] * 2)), pygame.SRCALPHA)
-            pygame.draw.circle(particle_surf, (100, 140, 255, alpha), (int(p['size']), int(p['size'])), int(p['size']))
-            self.screen.blit(particle_surf, (int(p['x']), int(p['y'])))
+            # Twinkling effect
+            brightness = 0.4 + 0.6 * math.sin(p['phase'])
+            size = p['size'] * (0.7 + 0.3 * brightness)
+            
+            # Color based on hue
+            r = int(150 + 100 * p['hue'] * brightness)
+            g = int(180 + 70 * brightness)
+            b = int(255 * brightness)
+            
+            pygame.draw.circle(self.screen, (r, g, b), (int(p['x']), int(p['y'])), int(size))
         
         # ═══════════════════════════════════════════════════════════════
-        # GLOWING CLOCK - Center stage
+        # HERO CLOCK - Massive, centered, glowing
         # ═══════════════════════════════════════════════════════════════
-        clock_x = 200
-        clock_y = 90
-        
-        # Time with glow effect
         time_str = now.strftime("%I:%M").lstrip('0')
+        time_surf = self.fonts['big'].render(time_str, True, (255, 255, 255))
+        clock_x = 40
+        clock_y = 45
         
-        # Render glow layers
-        glow_intensity = 0.6 + 0.4 * math.sin(self.home_anim * 1.5)
-        for glow_offset in range(3, 0, -1):
-            glow_alpha = int(40 * glow_intensity / glow_offset)
-            glow_color = (100, 150, 255)
-            glow_surf = self.fonts['big'].render(time_str, True, glow_color)
-            glow_surf.set_alpha(glow_alpha)
-            for dx in [-glow_offset, 0, glow_offset]:
-                for dy in [-glow_offset, 0, glow_offset]:
-                    if dx != 0 or dy != 0:
-                        self.screen.blit(glow_surf, (clock_x + dx, clock_y + dy))
+        # Multi-layer glow effect
+        glow_pulse = 0.7 + 0.3 * math.sin(self.home_anim * 2)
+        for layer in range(4, 0, -1):
+            glow_surf = self.fonts['big'].render(time_str, True, (80, 140, 255))
+            glow_surf.set_alpha(int(25 * glow_pulse / layer))
+            for dx in range(-layer*2, layer*2+1, layer):
+                for dy in range(-layer*2, layer*2+1, layer):
+                    self.screen.blit(glow_surf, (clock_x + dx, clock_y + dy))
         
-        # Main time text
-        time_surf = self.fonts['big'].render(time_str, True, (240, 245, 255))
+        # Main time - crisp white
         self.screen.blit(time_surf, (clock_x, clock_y))
         
-        # Blinking colon effect (subtle)
-        colon_alpha = int(180 + 75 * math.sin(self.home_anim * 4))
+        # Animated colon (blinks smoothly)
+        colon_x = clock_x + time_surf.get_width() // 2 - 8
+        colon_alpha = int(100 + 155 * (0.5 + 0.5 * math.sin(self.home_anim * 4)))
         
-        # AM/PM badge
+        # AM/PM pill badge
         ampm = now.strftime("%p")
-        ampm_x = clock_x + time_surf.get_width() + 12
-        ampm_y = clock_y + 35
-        pygame.draw.rect(self.screen, (50, 60, 90), (ampm_x, ampm_y, 45, 28), border_radius=6)
-        pygame.draw.rect(self.screen, (80, 100, 150), (ampm_x, ampm_y, 45, 28), width=1, border_radius=6)
-        ampm_surf = self.fonts['msg'].render(ampm, True, (180, 200, 255))
-        self.screen.blit(ampm_surf, (ampm_x + 10, ampm_y + 5))
+        ampm_x = clock_x + time_surf.get_width() + 15
+        ampm_y = clock_y + 25
         
-        # Seconds arc indicator
+        # Glowing pill
+        pill_w, pill_h = 48, 26
+        pill_surf = pygame.Surface((pill_w + 8, pill_h + 8), pygame.SRCALPHA)
+        pygame.draw.rect(pill_surf, (80, 120, 200, 60), (0, 0, pill_w + 8, pill_h + 8), border_radius=13)
+        self.screen.blit(pill_surf, (ampm_x - 4, ampm_y - 4))
+        pygame.draw.rect(self.screen, (40, 60, 100), (ampm_x, ampm_y, pill_w, pill_h), border_radius=13)
+        pygame.draw.rect(self.screen, (80, 120, 180), (ampm_x, ampm_y, pill_w, pill_h), width=1, border_radius=13)
+        ampm_surf = self.fonts['msg'].render(ampm, True, (180, 210, 255))
+        self.screen.blit(ampm_surf, (ampm_x + (pill_w - ampm_surf.get_width()) // 2, ampm_y + 5))
+        
+        # Seconds ring
+        sec_x = ampm_x + pill_w + 20
+        sec_y = ampm_y + pill_h // 2
+        sec_r = 14
         seconds = now.second + now.microsecond / 1000000
-        sec_angle = (seconds / 60) * 2 * math.pi - math.pi / 2
-        sec_x = clock_x + time_surf.get_width() + 35
-        sec_y = clock_y + 15
-        sec_r = 12
-        pygame.draw.circle(self.screen, (40, 50, 70), (sec_x, sec_y), sec_r + 2)
-        # Draw arc for seconds
-        for i in range(int(seconds)):
+        
+        # Ring background
+        pygame.draw.circle(self.screen, (30, 40, 60), (sec_x, sec_y), sec_r + 2)
+        
+        # Progress ring
+        for i in range(60):
             angle = (i / 60) * 2 * math.pi - math.pi / 2
-            end_x = sec_x + int(sec_r * math.cos(angle))
-            end_y = sec_y + int(sec_r * math.sin(angle))
-            pygame.draw.circle(self.screen, (100, 150, 255), (end_x, end_y), 2)
-        # Current second dot (brighter)
-        dot_x = sec_x + int(sec_r * math.cos(sec_angle))
-        dot_y = sec_y + int(sec_r * math.sin(sec_angle))
-        pygame.draw.circle(self.screen, (150, 200, 255), (dot_x, dot_y), 3)
+            if i <= int(seconds):
+                brightness = 1.0 if i == int(seconds) else 0.6
+                color = (int(100 * brightness), int(180 * brightness), int(255 * brightness))
+            else:
+                color = (25, 35, 50)
+            x = sec_x + int((sec_r - 1) * math.cos(angle))
+            y = sec_y + int((sec_r - 1) * math.sin(angle))
+            pygame.draw.circle(self.screen, color, (x, y), 2)
+        
+        # Center dot
+        pygame.draw.circle(self.screen, (150, 200, 255), (sec_x, sec_y), 4)
         
         # ═══════════════════════════════════════════════════════════════
-        # DATE & WEATHER - Below clock
+        # DATE & WEATHER - Elegant typography
         # ═══════════════════════════════════════════════════════════════
-        date_y = clock_y + 75
+        date_y = clock_y + 72
         
-        # Date with style
+        # Day name - larger
         day_name = now.strftime("%A")
-        date_rest = now.strftime("%B %d, %Y")
-        
-        day_surf = self.fonts['title'].render(day_name, True, (200, 210, 240))
+        day_surf = self.fonts['title'].render(day_name, True, (220, 230, 255))
         self.screen.blit(day_surf, (clock_x, date_y))
         
-        date_surf = self.fonts['msg'].render(date_rest, True, (120, 130, 160))
-        self.screen.blit(date_surf, (clock_x + day_surf.get_width() + 15, date_y + 5))
+        # Decorative line
+        line_x = clock_x + day_surf.get_width() + 12
+        pygame.draw.line(self.screen, (60, 80, 120), (line_x, date_y + 8), (line_x, date_y + 22), 2)
         
-        # Weather with icon
-        weather_y = date_y + 32
+        # Full date
+        date_str = now.strftime("%B %d, %Y")
+        date_surf = self.fonts['msg'].render(date_str, True, (140, 160, 200))
+        self.screen.blit(date_surf, (line_x + 12, date_y + 6))
+        
+        # Weather card
+        weather_y = date_y + 38
+        weather_w = 280
+        weather_h = 42
+        
+        # Glass card effect
+        weather_card = pygame.Surface((weather_w, weather_h), pygame.SRCALPHA)
+        weather_card.fill((30, 40, 60, 150))
+        self.screen.blit(weather_card, (clock_x, weather_y))
+        pygame.draw.rect(self.screen, (60, 80, 120, 100), (clock_x, weather_y, weather_w, weather_h), width=1, border_radius=8)
+        
         if self.weather:
-            # Weather icon based on conditions
             weather_lower = self.weather.lower()
             if 'sun' in weather_lower or 'clear' in weather_lower:
-                w_icon = '*'
-                w_color = (255, 220, 100)
+                w_color = (255, 200, 80)
+                w_icon = "O"
             elif 'cloud' in weather_lower:
-                w_icon = '~'
-                w_color = (180, 190, 210)
+                w_color = (180, 195, 220)
+                w_icon = "C"
             elif 'rain' in weather_lower:
-                w_icon = ','
-                w_color = (100, 150, 220)
+                w_color = (100, 160, 230)
+                w_icon = "R"
             else:
-                w_icon = '='
-                w_color = (150, 160, 180)
+                w_color = (160, 175, 200)
+                w_icon = "-"
             
-            # Icon circle
-            pygame.draw.circle(self.screen, (40, 50, 70), (clock_x + 12, weather_y + 10), 14)
-            icon_surf = self.fonts['msg'].render(w_icon, True, w_color)
-            self.screen.blit(icon_surf, (clock_x + 6, weather_y + 2))
+            # Weather icon circle
+            pygame.draw.circle(self.screen, (40, 50, 70), (clock_x + 24, weather_y + 21), 14)
+            pygame.draw.circle(self.screen, w_color, (clock_x + 24, weather_y + 21), 10)
             
-            weather_surf = self.fonts['msg'].render(self.weather[:35], True, (160, 170, 200))
-            self.screen.blit(weather_surf, (clock_x + 35, weather_y + 2))
+            # Weather text
+            weather_text = self.weather[:32]
+            w_surf = self.fonts['msg'].render(weather_text, True, (200, 215, 240))
+            self.screen.blit(w_surf, (clock_x + 48, weather_y + 12))
         else:
             self.load_weather()
+            loading_surf = self.fonts['status'].render("Loading weather...", True, (100, 120, 150))
+            self.screen.blit(loading_surf, (clock_x + 15, weather_y + 14))
         
         # ═══════════════════════════════════════════════════════════════
-        # SYSTEM GAUGES - Right side, circular design
+        # SYSTEM PANEL - Modern glass morphism
         # ═══════════════════════════════════════════════════════════════
-        gauges_x = 560
-        gauges_y = 55
+        panel_x = 480
+        panel_y = 45
+        panel_w = 305
+        panel_h = 155
         
-        # Glass panel background
-        panel_w = 220
-        panel_h = 165
+        # Glass panel with blur effect simulation
         panel_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
-        panel_surf.fill((25, 30, 45, 200))
-        self.screen.blit(panel_surf, (gauges_x, gauges_y))
-        pygame.draw.rect(self.screen, (60, 70, 100), (gauges_x, gauges_y, panel_w, panel_h), width=1, border_radius=12)
+        # Gradient fill
+        for y in range(panel_h):
+            alpha = 180 - int(40 * y / panel_h)
+            pygame.draw.line(panel_surf, (25, 35, 55, alpha), (0, y), (panel_w, y))
+        self.screen.blit(panel_surf, (panel_x, panel_y))
         
-        # Panel title
-        title_surf = self.fonts['status'].render("SYSTEM", True, (100, 120, 160))
-        self.screen.blit(title_surf, (gauges_x + panel_w // 2 - title_surf.get_width() // 2, gauges_y + 8))
+        # Glowing border
+        border_pulse = 0.6 + 0.4 * math.sin(self.home_anim * 1.5)
+        border_color = (int(60 * border_pulse + 40), int(80 * border_pulse + 50), int(140 * border_pulse + 60))
+        pygame.draw.rect(self.screen, border_color, (panel_x, panel_y, panel_w, panel_h), width=1, border_radius=12)
         
-        # CPU Gauge
-        self._draw_circular_gauge(gauges_x + 55, gauges_y + 75, 35, stats['cpu'], "CPU",
-                                  (100, 200, 150) if stats['cpu'] < 50 else (220, 180, 80) if stats['cpu'] < 80 else (220, 100, 100))
+        # Section header
+        header_surf = self.fonts['status'].render("SYSTEM STATUS", True, (120, 150, 200))
+        self.screen.blit(header_surf, (panel_x + 15, panel_y + 10))
         
-        # Memory Gauge
-        self._draw_circular_gauge(gauges_x + 165, gauges_y + 75, 35, stats['mem'], "MEM",
-                                  (100, 200, 150) if stats['mem'] < 60 else (220, 180, 80) if stats['mem'] < 85 else (220, 100, 100))
+        # Uptime badge
+        up_badge_x = panel_x + panel_w - 80
+        pygame.draw.rect(self.screen, (40, 55, 80), (up_badge_x, panel_y + 8, 68, 20), border_radius=10)
+        up_surf = self.fonts['status'].render(stats['uptime'], True, (140, 180, 230))
+        self.screen.blit(up_surf, (up_badge_x + 34 - up_surf.get_width() // 2, panel_y + 11))
         
-        # Temperature bar
+        # CPU Gauge - Large
+        cpu_cx = panel_x + 65
+        cpu_cy = panel_y + 85
+        cpu_r = 38
+        self._draw_premium_gauge(cpu_cx, cpu_cy, cpu_r, stats['cpu'], "CPU", 
+                                (100, 220, 160) if stats['cpu'] < 50 else (240, 200, 80) if stats['cpu'] < 80 else (240, 100, 100))
+        
+        # Memory Gauge - Large
+        mem_cx = panel_x + 175
+        mem_cy = panel_y + 85
+        mem_r = 38
+        self._draw_premium_gauge(mem_cx, mem_cy, mem_r, stats['mem'], "MEM",
+                                (100, 220, 160) if stats['mem'] < 60 else (240, 200, 80) if stats['mem'] < 85 else (240, 100, 100))
+        
+        # Temperature mini gauge
         temp = stats['temp']
-        temp_color = (100, 200, 150) if temp < 55 else (220, 180, 80) if temp < 70 else (220, 100, 100)
-        temp_y = gauges_y + 130
-        pygame.draw.rect(self.screen, (30, 35, 50), (gauges_x + 15, temp_y, panel_w - 30, 8), border_radius=4)
-        temp_fill = int((panel_w - 30) * min(temp, 85) / 85)
-        pygame.draw.rect(self.screen, temp_color, (gauges_x + 15, temp_y, temp_fill, 8), border_radius=4)
-        temp_surf = self.fonts['status'].render(f"{temp}C", True, temp_color)
-        self.screen.blit(temp_surf, (gauges_x + 15, temp_y + 12))
-        up_surf = self.fonts['status'].render(f"Up: {stats['uptime']}", True, (100, 120, 160))
-        self.screen.blit(up_surf, (gauges_x + panel_w - up_surf.get_width() - 15, temp_y + 12))
+        temp_cx = panel_x + 260
+        temp_cy = panel_y + 85
+        temp_color = (100, 220, 160) if temp < 55 else (240, 200, 80) if temp < 70 else (240, 100, 100)
+        
+        pygame.draw.circle(self.screen, (30, 40, 55), (temp_cx, temp_cy), 28)
+        pygame.draw.circle(self.screen, (50, 65, 90), (temp_cx, temp_cy), 28, width=2)
+        
+        # Temperature arc
+        temp_pct = min(temp, 85) / 85
+        for i in range(int(temp_pct * 100)):
+            angle = -math.pi/2 + (i/100) * 2 * math.pi
+            x = temp_cx + int(22 * math.cos(angle))
+            y = temp_cy + int(22 * math.sin(angle))
+            pygame.draw.circle(self.screen, temp_color, (x, y), 2)
+        
+        temp_surf = self.fonts['msg'].render(f"{temp}C", True, temp_color)
+        self.screen.blit(temp_surf, (temp_cx - temp_surf.get_width()//2, temp_cy - 6))
+        
+        temp_label = self.fonts['status'].render("TEMP", True, (100, 120, 160))
+        self.screen.blit(temp_label, (temp_cx - temp_label.get_width()//2, temp_cy + 30))
         
         # ═══════════════════════════════════════════════════════════════
-        # STATUS CARDS - Bottom section
+        # STATUS TILES - 2x2 Grid with icons
         # ═══════════════════════════════════════════════════════════════
-        cards_y = 240
-        card_h = 85
-        card_gap = 12
+        tiles_y = 210
+        tile_w = 188
+        tile_h = 75
+        tile_gap = 8
         
-        # Card 1: Gateway Status
         gw_status = self._get_gateway_status()
         gw_connected = gw_status.get('connected', False)
-        self._draw_status_card(15, cards_y, 185, card_h,
-                              "GATEWAY", 
-                              "Online" if gw_connected else "Offline",
-                              (80, 200, 120) if gw_connected else (200, 80, 80),
-                              gw_connected, "[G]")
-        
-        # Card 2: Tasks Summary  
         task_count = len([t for t in self.tasks if not t.get('done')]) if self.tasks else 0
-        overdue = len([t for t in self.tasks if t.get('overdue')]) if self.tasks else 0
-        task_text = f"{task_count} pending" if task_count else "All clear"
-        task_color = (220, 180, 80) if task_count > 5 else (100, 200, 150) if task_count == 0 else (180, 200, 220)
-        self._draw_status_card(15 + 185 + card_gap, cards_y, 185, card_h,
-                              "TASKS",
-                              task_text,
-                              task_color,
-                              task_count == 0, "[F2]")
         
-        # Card 3: Session Info
-        display_name = self.settings.session_renames.get(self.settings.session_key, self.settings.session_key)
-        if len(display_name) > 12:
-            display_name = display_name[:11] + "..."
-        self._draw_status_card(15 + (185 + card_gap) * 2, cards_y, 185, card_h,
-                              "SESSION",
-                              display_name,
-                              (100, 150, 220),
-                              True, "[F3]")
+        # Tile 1: Gateway
+        self._draw_status_tile(15, tiles_y, tile_w, tile_h,
+                              "GATEWAY", "Online" if gw_connected else "Offline",
+                              (80, 220, 140) if gw_connected else (220, 90, 90),
+                              "G", gw_connected)
         
-        # Card 4: Quick Actions
-        self._draw_status_card(15 + (185 + card_gap) * 3, cards_y, 185, card_h,
-                              "COMMANDS",
-                              "System Tools",
-                              (150, 130, 200),
-                              True, "[F4]")
+        # Tile 2: Tasks
+        self._draw_status_tile(15 + tile_w + tile_gap, tiles_y, tile_w, tile_h,
+                              "TASKS", f"{task_count} pending" if task_count else "All done",
+                              (240, 190, 80) if task_count > 5 else (80, 220, 140) if task_count == 0 else (140, 180, 220),
+                              "T", task_count == 0)
+        
+        # Tile 3: Kanban
+        kanban_count = sum(len(cards) for cards in getattr(self, 'kanban_data', {}).values())
+        self._draw_status_tile(15 + (tile_w + tile_gap) * 2, tiles_y, tile_w, tile_h,
+                              "KANBAN", f"{kanban_count} projects",
+                              (140, 120, 220),
+                              "K", True)
+        
+        # Tile 4: Chat
+        msg_count = len(self.messages) if self.messages else 0
+        self._draw_status_tile(15 + (tile_w + tile_gap) * 3, tiles_y, tile_w, tile_h,
+                              "CHAT", f"{msg_count} messages" if msg_count else "Start chat",
+                              (100, 160, 240),
+                              "C", True)
         
         # ═══════════════════════════════════════════════════════════════
-        # CHAT PREVIEW - Floating card style
+        # ACTIVITY FEED - Recent messages/events
         # ═══════════════════════════════════════════════════════════════
-        preview_y = cards_y + card_h + 15
-        preview_h = 95
+        feed_y = tiles_y + tile_h + 12
+        feed_h = SCREEN_HEIGHT - feed_y - 35
         
-        # Glass card
-        preview_surf = pygame.Surface((SCREEN_WIDTH - 30, preview_h), pygame.SRCALPHA)
-        preview_surf.fill((25, 30, 45, 220))
-        self.screen.blit(preview_surf, (15, preview_y))
-        pygame.draw.rect(self.screen, (50, 60, 90), (15, preview_y, SCREEN_WIDTH - 30, preview_h), width=1, border_radius=10)
+        # Feed container
+        feed_surf = pygame.Surface((SCREEN_WIDTH - 30, feed_h), pygame.SRCALPHA)
+        feed_surf.fill((20, 28, 42, 200))
+        self.screen.blit(feed_surf, (15, feed_y))
+        pygame.draw.rect(self.screen, (50, 65, 95), (15, feed_y, SCREEN_WIDTH - 30, feed_h), width=1, border_radius=10)
         
-        # Chat icon and label
-        pygame.draw.circle(self.screen, (60, 80, 120), (42, preview_y + 22), 15)
-        chat_icon = self.fonts['msg'].render(">_", True, (150, 180, 255))
-        self.screen.blit(chat_icon, (32, preview_y + 14))
+        # Feed header
+        feed_icon = self.fonts['msg'].render(">", True, (100, 150, 220))
+        self.screen.blit(feed_icon, (28, feed_y + 10))
+        feed_title = self.fonts['status'].render("RECENT ACTIVITY", True, (100, 130, 180))
+        self.screen.blit(feed_title, (48, feed_y + 12))
         
-        label_surf = self.fonts['status'].render("RECENT CHAT", True, (100, 120, 160))
-        self.screen.blit(label_surf, (65, preview_y + 15))
+        # Live indicator
+        live_pulse = 0.5 + 0.5 * math.sin(self.home_anim * 4)
+        live_color = (int(80 + 80 * live_pulse), int(200 * live_pulse + 55), int(120 + 40 * live_pulse))
+        pygame.draw.circle(self.screen, live_color, (SCREEN_WIDTH - 45, feed_y + 16), 5)
+        live_text = self.fonts['status'].render("LIVE", True, (100, 180, 140))
+        self.screen.blit(live_text, (SCREEN_WIDTH - 80, feed_y + 10))
         
+        # Messages
         if self.messages:
-            recent = list(self.messages)[-2:]
-            msg_y = preview_y + 40
+            recent = list(self.messages)[-3:]
+            msg_y = feed_y + 35
             for msg in recent:
                 if msg.role == 'system':
                     continue
                 
-                if msg.role == 'user':
-                    indicator_color = (100, 150, 255)
-                    prefix = "You: "
-                else:
-                    indicator_color = (100, 200, 150)
-                    prefix = "AI: "
+                is_user = msg.role == 'user'
+                dot_color = (100, 150, 255) if is_user else (100, 220, 160)
+                prefix = "You" if is_user else "AI"
                 
-                # Indicator dot
-                pygame.draw.circle(self.screen, indicator_color, (30, msg_y + 8), 4)
+                # Time indicator line
+                pygame.draw.rect(self.screen, dot_color, (28, msg_y + 2, 3, 16), border_radius=1)
                 
-                preview_text = prefix + msg.text[:75] + ("..." if len(msg.text) > 75 else "")
-                preview_surf = self.fonts['msg'].render(preview_text, True, (180, 190, 210))
-                self.screen.blit(preview_surf, (45, msg_y))
-                msg_y += 24
+                # Prefix badge
+                badge_w = 32
+                pygame.draw.rect(self.screen, (40, 50, 70), (40, msg_y, badge_w, 18), border_radius=4)
+                prefix_surf = self.fonts['status'].render(prefix, True, dot_color)
+                self.screen.blit(prefix_surf, (40 + (badge_w - prefix_surf.get_width())//2, msg_y + 2))
+                
+                # Message text
+                text = msg.text[:68] + "..." if len(msg.text) > 68 else msg.text
+                text_surf = self.fonts['msg'].render(text, True, (190, 200, 220))
+                self.screen.blit(text_surf, (80, msg_y + 1))
+                
+                msg_y += 26
         else:
-            empty_surf = self.fonts['msg'].render("Press F3 to start chatting...", True, (80, 90, 120))
-            self.screen.blit(empty_surf, (45, preview_y + 50))
+            empty_surf = self.fonts['msg'].render("No activity yet. Press F3 to start a conversation.", True, (80, 100, 140))
+            self.screen.blit(empty_surf, (40, feed_y + 45))
         
         # ═══════════════════════════════════════════════════════════════
-        # FOOTER - Subtle navigation hint
+        # NAVIGATION BAR - Bottom
         # ═══════════════════════════════════════════════════════════════
-        footer_y = SCREEN_HEIGHT - 22
-        hint = "F1 Home   F2 Tasks   F3 Chat   F4 Commands   F5 Kanban"
-        hint_surf = self.fonts['status'].render(hint, True, (70, 80, 110))
-        self.screen.blit(hint_surf, ((SCREEN_WIDTH - hint_surf.get_width()) // 2, footer_y))
+        nav_y = SCREEN_HEIGHT - 28
+        nav_items = [("F1", "Home", True), ("F2", "Tasks", False), ("F3", "Chat", False), 
+                     ("F4", "Cmds", False), ("F5", "Kanban", False)]
+        
+        total_w = sum(55 for _ in nav_items) + (len(nav_items) - 1) * 15
+        nav_x = (SCREEN_WIDTH - total_w) // 2
+        
+        for key, label, is_active in nav_items:
+            if is_active:
+                pygame.draw.rect(self.screen, (50, 70, 110), (nav_x - 5, nav_y - 2, 55, 22), border_radius=6)
+            
+            key_surf = self.fonts['status'].render(key, True, (140, 170, 220) if is_active else (70, 90, 130))
+            self.screen.blit(key_surf, (nav_x, nav_y))
+            
+            label_surf = self.fonts['status'].render(label, True, (180, 200, 240) if is_active else (90, 110, 150))
+            self.screen.blit(label_surf, (nav_x + 22, nav_y))
+            
+            nav_x += 70
     
-    def _draw_circular_gauge(self, cx, cy, r, pct, label, color):
-        """Draw an animated circular gauge"""
+    def _draw_premium_gauge(self, cx, cy, r, pct, label, color):
+        """Draw a premium circular gauge with glow"""
         import math
         
-        # Background circle
-        pygame.draw.circle(self.screen, (30, 35, 50), (cx, cy), r)
-        pygame.draw.circle(self.screen, (50, 55, 70), (cx, cy), r, width=2)
+        # Outer glow
+        glow_surf = pygame.Surface((r*2 + 20, r*2 + 20), pygame.SRCALPHA)
+        for i in range(3):
+            pygame.draw.circle(glow_surf, (color[0]//4, color[1]//4, color[2]//4, 30 - i*10), 
+                             (r + 10, r + 10), r + 5 - i*2)
+        self.screen.blit(glow_surf, (cx - r - 10, cy - r - 10))
         
-        # Progress arc
+        # Background
+        pygame.draw.circle(self.screen, (25, 35, 50), (cx, cy), r)
+        pygame.draw.circle(self.screen, (45, 60, 85), (cx, cy), r, width=2)
+        
+        # Track
+        pygame.draw.circle(self.screen, (35, 45, 65), (cx, cy), r - 6, width=4)
+        
+        # Progress arc with gradient
         if pct > 0:
-            start_angle = -math.pi / 2
-            end_angle = start_angle + (pct / 100) * 2 * math.pi
-            
-            # Draw arc as series of small lines
             for i in range(int(pct)):
-                angle = start_angle + (i / 100) * 2 * math.pi
-                inner_r = r - 6
-                outer_r = r - 2
+                angle = -math.pi/2 + (i/100) * 2 * math.pi
+                progress = i / max(pct, 1)
+                
+                # Color intensity increases along arc
+                intensity = 0.5 + 0.5 * progress
+                c = (int(color[0] * intensity), int(color[1] * intensity), int(color[2] * intensity))
+                
+                inner_r = r - 9
+                outer_r = r - 4
                 x1 = cx + int(inner_r * math.cos(angle))
                 y1 = cy + int(inner_r * math.sin(angle))
                 x2 = cx + int(outer_r * math.cos(angle))
                 y2 = cy + int(outer_r * math.sin(angle))
-                pygame.draw.line(self.screen, color, (x1, y1), (x2, y2), 2)
+                pygame.draw.line(self.screen, c, (x1, y1), (x2, y2), 3)
         
-        # Center text
-        pct_surf = self.fonts['msg'].render(f"{pct}%", True, color)
-        self.screen.blit(pct_surf, (cx - pct_surf.get_width() // 2, cy - 8))
+        # Center value
+        pct_surf = self.fonts['title'].render(f"{pct}", True, color)
+        self.screen.blit(pct_surf, (cx - pct_surf.get_width()//2, cy - 12))
         
-        # Label below
-        label_surf = self.fonts['status'].render(label, True, (100, 110, 140))
-        self.screen.blit(label_surf, (cx - label_surf.get_width() // 2, cy + r + 5))
+        pct_symbol = self.fonts['status'].render("%", True, (100, 120, 160))
+        self.screen.blit(pct_symbol, (cx + pct_surf.get_width()//2 - 2, cy - 6))
+        
+        # Label
+        label_surf = self.fonts['status'].render(label, True, (110, 130, 170))
+        self.screen.blit(label_surf, (cx - label_surf.get_width()//2, cy + r + 8))
     
-    def _draw_status_card(self, x, y, w, h, title, value, color, is_good, hint):
-        """Draw a modern status card with glow effect"""
+    def _draw_status_tile(self, x, y, w, h, title, value, color, icon_char, is_good):
+        """Draw a modern status tile"""
         import math
         
-        # Card background with subtle gradient
-        card_surf = pygame.Surface((w, h), pygame.SRCALPHA)
+        # Tile background with gradient
+        tile_surf = pygame.Surface((w, h), pygame.SRCALPHA)
         for i in range(h):
-            alpha = 200 - int(30 * i / h)
-            pygame.draw.line(card_surf, (30, 35, 50, alpha), (0, i), (w, i))
-        self.screen.blit(card_surf, (x, y))
+            alpha = 160 - int(30 * i / h)
+            r = 25 + int(10 * i / h)
+            g = 32 + int(8 * i / h)
+            b = 48 + int(12 * i / h)
+            pygame.draw.line(tile_surf, (r, g, b, alpha), (0, i), (w, i))
+        self.screen.blit(tile_surf, (x, y))
         
-        # Border with color accent
-        pygame.draw.rect(self.screen, (50, 55, 75), (x, y, w, h), width=1, border_radius=10)
+        # Border
+        pygame.draw.rect(self.screen, (55, 70, 100), (x, y, w, h), width=1, border_radius=10)
         
-        # Color accent bar at top
-        pygame.draw.rect(self.screen, color, (x, y, w, 3), border_top_left_radius=10, border_top_right_radius=10)
+        # Accent line at top
+        pygame.draw.rect(self.screen, color, (x + 10, y, w - 20, 2), border_radius=1)
         
-        # Pulsing indicator dot
-        pulse = 0.6 + 0.4 * math.sin(self.home_anim * 3 + x * 0.01)
-        dot_color = (int(color[0] * pulse), int(color[1] * pulse), int(color[2] * pulse))
-        pygame.draw.circle(self.screen, dot_color, (x + w - 18, y + 18), 6)
+        # Icon circle with glow
+        icon_x = x + 28
+        icon_y = y + h // 2
+        
+        pulse = 0.6 + 0.4 * math.sin(self.home_anim * 2.5 + x * 0.01)
+        glow_r = int(18 + 4 * pulse)
+        
+        # Glow
+        glow_surf = pygame.Surface((glow_r * 2 + 10, glow_r * 2 + 10), pygame.SRCALPHA)
+        pygame.draw.circle(glow_surf, (color[0]//3, color[1]//3, color[2]//3, int(60 * pulse)),
+                          (glow_r + 5, glow_r + 5), glow_r)
+        self.screen.blit(glow_surf, (icon_x - glow_r - 5, icon_y - glow_r - 5))
+        
+        # Icon background
+        pygame.draw.circle(self.screen, (35, 45, 65), (icon_x, icon_y), 16)
+        pygame.draw.circle(self.screen, color, (icon_x, icon_y), 16, width=2)
+        
+        # Icon letter
+        icon_surf = self.fonts['msg'].render(icon_char, True, color)
+        self.screen.blit(icon_surf, (icon_x - icon_surf.get_width()//2, icon_y - icon_surf.get_height()//2))
+        
+        # Status indicator
         if is_good:
-            pygame.draw.circle(self.screen, (255, 255, 255), (x + w - 18, y + 18), 3)
+            pygame.draw.circle(self.screen, (80, 220, 140), (x + w - 18, y + 14), 5)
+        else:
+            # Pulsing warning
+            warn_pulse = 0.5 + 0.5 * math.sin(self.home_anim * 5)
+            pygame.draw.circle(self.screen, (int(240 * warn_pulse + 15), int(100 * warn_pulse), int(80 * warn_pulse)), 
+                             (x + w - 18, y + 14), 5)
         
         # Title
-        title_surf = self.fonts['status'].render(title, True, (100, 110, 140))
-        self.screen.blit(title_surf, (x + 12, y + 12))
+        title_surf = self.fonts['status'].render(title, True, (110, 130, 170))
+        self.screen.blit(title_surf, (x + 52, y + 15))
         
         # Value
-        value_surf = self.fonts['title'].render(value, True, (220, 230, 250))
-        self.screen.blit(value_surf, (x + 12, y + 35))
-        
-        # Hint
-        hint_surf = self.fonts['status'].render(hint, True, (70, 80, 110))
-        self.screen.blit(hint_surf, (x + 12, y + h - 22))
+        value_surf = self.fonts['msg'].render(value, True, (210, 225, 250))
+        self.screen.blit(value_surf, (x + 52, y + 38))
         
     def draw_tasks(self):
         """WOW Edition - Premium animated task interface"""

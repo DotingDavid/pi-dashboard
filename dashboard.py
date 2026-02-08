@@ -102,9 +102,10 @@ TEXT_SIZES = {
 MODE_DASHBOARD = 0
 MODE_TASKS = 1
 MODE_CHAT = 2
-MODE_COMMANDS = 3
-MODE_KANBAN = 4
-MODE_NAMES = ['Home', 'Tasks', 'Chat', 'Cmds', 'Kanban']
+MODE_KANBAN = 3
+MODE_COMMANDS = 4
+MODE_NAMES = ['Home', 'Tasks', 'Chat', 'Kanban', 'Cmds']
+TAB_NAMES = ['Home', 'Tasks', 'Chat', 'Kanban']  # Only show 4 tabs (no Cmds)
 
 
 class Message:
@@ -1075,13 +1076,14 @@ class DashboardApp:
     # ===== DRAWING =====
     
     def draw_tabs(self):
-        """Draw tab bar at top"""
+        """Draw tab bar at top - only 4 tabs (Home, Tasks, Chat, Kanban)"""
         tab_h = 36
-        tab_w = SCREEN_WIDTH // 5
+        tab_w = SCREEN_WIDTH // 4  # 4 tabs now
         
-        for i, name in enumerate(MODE_NAMES):
+        for i, name in enumerate(TAB_NAMES):
             x = i * tab_w
-            is_active = i == self.mode
+            # Map tab index to mode (0=Home, 1=Tasks, 2=Chat, 3=Kanban)
+            is_active = i == self.mode if self.mode < 4 else False
             
             color = C['bg_tab_active'] if is_active else C['bg_tab']
             pygame.draw.rect(self.screen, color, (x, 0, tab_w - 1, tab_h))
@@ -1456,7 +1458,7 @@ class DashboardApp:
         # ═══════════════════════════════════════════════════════════════
         nav_y = SCREEN_HEIGHT - 28
         nav_items = [("F1", "Home", True), ("F2", "Tasks", False), ("F3", "Chat", False), 
-                     ("F4", "Cmds", False), ("F5", "Kanban", False)]
+                     ("F4", "Kanban", False), ("F5", "Cmds", False)]
         
         total_w = sum(55 for _ in nav_items) + (len(nav_items) - 1) * 15
         nav_x = (SCREEN_WIDTH - total_w) // 2
@@ -3645,10 +3647,10 @@ class DashboardApp:
             self.switch_mode(MODE_CHAT)
             return
         elif event.key == pygame.K_F4:
-            self.switch_mode(MODE_COMMANDS)
+            self.switch_mode(MODE_KANBAN)
             return
         elif event.key == pygame.K_F5:
-            self.switch_mode(MODE_KANBAN)
+            self.switch_mode(MODE_COMMANDS)
             return
                 
         # Ctrl+Q behavior

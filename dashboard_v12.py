@@ -93,9 +93,9 @@ TERM_COLORS = {
 }
 
 TEXT_SIZES = {
-    'small': {'msg': 16, 'input': 17, 'title': 22, 'status': 14, 'time': 14, 'line_height': 22},
-    'medium': {'msg': 19, 'input': 20, 'title': 24, 'status': 15, 'time': 15, 'line_height': 26},
-    'large': {'msg': 24, 'input': 25, 'title': 30, 'status': 18, 'time': 17, 'line_height': 32},
+    'small': {'msg': 14, 'input': 15, 'title': 20, 'status': 12, 'time': 12, 'line_height': 18},
+    'medium': {'msg': 16, 'input': 17, 'title': 22, 'status': 14, 'time': 13, 'line_height': 22},
+    'large': {'msg': 20, 'input': 21, 'title': 26, 'status': 16, 'time': 15, 'line_height': 26},
 }
 
 # Panel modes
@@ -103,8 +103,7 @@ MODE_DASHBOARD = 0
 MODE_TASKS = 1
 MODE_CHAT = 2
 MODE_COMMANDS = 3
-MODE_KANBAN = 4
-MODE_NAMES = ['Home', 'Tasks', 'Chat', 'Cmds', 'Kanban']
+MODE_NAMES = ['Dashboard', 'Tasks', 'Chat', 'Commands']
 
 
 class Message:
@@ -325,110 +324,24 @@ class DashboardApp:
         
             
     def load_local_tasks(self):
-        """Load tasks from Todoist"""
-        self._load_todoist_tasks()
+        """Load tasks from local JSON file"""
+        try:
+            if TASKS_FILE.exists():
+                with open(TASKS_FILE) as f:
+                    self.tasks = json.load(f)
+            else:
+                self.tasks = []
+        except:
+            self.tasks = []
             
     def save_local_tasks(self):
-        """No-op - Todoist syncs automatically"""
-        pass
-    
-    def _load_todoist_tasks(self):
-        """Fetch tasks from Todoist API with subtask support"""
+        """Save tasks to local JSON file"""
         try:
-            result = subprocess.run(
-                ['todoist', 'tasks', '--all', '--json'],
-                capture_output=True, text=True, timeout=10
-            )
-            if result.returncode == 0:
-                raw_tasks = json.loads(result.stdout)
-                
-                # Build task dict and identify parent/child relationships
-                task_dict = {}
-                children_map = {}  # parentId -> list of children
-                
-                for t in raw_tasks:
-                    due_str = ''
-                    if t.get('due'):
-                        due_str = t['due'].get('string', '') or t['due'].get('date', '')
-                    
-                    task = {
-                        'id': t['id'],
-                        'content': t.get('content', ''),
-                        'priority': t.get('priority', 1),
-                        'done': t.get('checked', False),
-                        'due': due_str,
-                        'project_id': t.get('projectId', ''),
-                        'parent_id': t.get('parentId'),
-                        'child_order': t.get('childOrder', 0),
-                        'subtasks': [],
-                        'expanded': False,
-                        'is_subtask': t.get('parentId') is not None,
-                    }
-                    task_dict[t['id']] = task
-                    
-                    # Track children
-                    parent_id = t.get('parentId')
-                    if parent_id:
-                        if parent_id not in children_map:
-                            children_map[parent_id] = []
-                        children_map[parent_id].append(task)
-                
-                # Attach subtasks to parents
-                for parent_id, children in children_map.items():
-                    if parent_id in task_dict:
-                        task_dict[parent_id]['subtasks'] = sorted(children, key=lambda x: x['child_order'])
-                
-                # Build flat list - only top-level tasks (no parentId)
-                self.tasks = [t for t in task_dict.values() if not t['is_subtask']]
-                self.tasks = sorted(self.tasks, key=lambda x: x['child_order'])[:50]
-                
-                # Initialize expanded state tracking
-                if not hasattr(self, 'task_expanded'):
-                    self.task_expanded = set()
-                
-                self.todoist_sync_status = 'live'
-                self.todoist_last_sync = time.time()
-            else:
-                self.todoist_sync_status = 'error'
-        except Exception as e:
-            self.todoist_sync_status = 'error'
-    
-    def _todoist_complete_task(self, task_id):
-        """Mark task complete in Todoist"""
-        try:
-            self.todoist_sync_status = 'syncing'
-            result = subprocess.run(
-                ['todoist', 'done', str(task_id)],
-                capture_output=True, text=True, timeout=10
-            )
-            if result.returncode == 0:
-                self.todoist_sync_status = 'live'
-                return True
-            else:
-                self.todoist_sync_status = 'error'
-                return False
+            TASKS_FILE.parent.mkdir(parents=True, exist_ok=True)
+            with open(TASKS_FILE, 'w') as f:
+                json.dump(self.tasks, f, indent=2)
         except:
-            self.todoist_sync_status = 'error'
-            return False
-    
-    def _todoist_add_task(self, content, due=None):
-        """Add task to Todoist"""
-        try:
-            self.todoist_sync_status = 'syncing'
-            cmd = ['todoist', 'add', content]
-            if due:
-                cmd.extend(['--due', due])
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-            if result.returncode == 0:
-                self.todoist_sync_status = 'live'
-                self._load_todoist_tasks()  # Refresh
-                return True
-            else:
-                self.todoist_sync_status = 'error'
-                return False
-        except:
-            self.todoist_sync_status = 'error'
-            return False
+            pass
             
     def add_task(self):
         """Add a new task and enter edit mode"""
@@ -453,17 +366,10 @@ class DashboardApp:
                 self.task_selected = len(self.tasks) - 1
                 
     def toggle_task_done(self):
-        """Complete task in Todoist"""
+        """Toggle done state of selected task"""
         if self.tasks and 0 <= self.task_selected < len(self.tasks):
-            task = self.tasks[self.task_selected]
-            task_id = task.get('id')
-            if task_id and not task.get('done'):
-                # Complete in Todoist
-                if self._todoist_complete_task(task_id):
-                    # Remove from local list
-                    self.tasks.pop(self.task_selected)
-                    if self.task_selected >= len(self.tasks) and self.tasks:
-                        self.task_selected = len(self.tasks) - 1
+            self.tasks[self.task_selected]['done'] = not self.tasks[self.task_selected].get('done', False)
+            self.save_local_tasks()
             
     def cycle_task_priority(self):
         """Cycle priority of selected task (1 -> 2 -> 3 -> 4 -> 1)"""
@@ -738,68 +644,60 @@ class DashboardApp:
         """Return list of available commands"""
         return [
             {
-                'label': 'Restart Dashboard',
-                'desc': 'Reload this interface',
+                'label': 'Restart Dash',
+                'desc': 'Restart dashboard',
                 'cmd': '__restart_dashboard__',
-                'icon': '1',
                 'color': C['accent'],
-                'category': 'safe'
+                'safe': True
             },
             {
                 'label': 'Node Status',
-                'desc': 'Check connection to gateway',
+                'desc': 'Check node connection',
                 'cmd': 'openclaw nodes status',
-                'icon': '2',
                 'color': C['accent'],
-                'category': 'safe'
+                'safe': True
             },
             {
                 'label': 'Disk Space',
-                'desc': 'View storage usage',
+                'desc': 'Check storage',
                 'cmd': "df -h / | awk 'NR==2 {print $3 \"/\" $2 \" (\" $5 \" used)\"}'",
-                'icon': '3',
                 'color': C['accent'],
-                'category': 'safe'
-            },
-            {
-                'label': 'Screen Off',
-                'desc': 'Turn off display (any key to wake)',
-                'cmd': '__screen_off__',
-                'icon': '4',
-                'color': (100, 100, 120),
-                'category': 'safe'
+                'safe': True
             },
             {
                 'label': 'Restart Gateway',
-                'desc': 'Restart OpenClaw service',
+                'desc': 'Restart OpenClaw',
                 'cmd': 'systemctl --user restart openclaw-gateway',
-                'icon': '5',
                 'color': C['warning'],
-                'category': 'caution'
+                'safe': False
             },
             {
-                'label': 'Update System',
-                'desc': 'Pull latest code & install',
+                'label': 'Update Gateway',
+                'desc': 'Pull latest & install',
                 'cmd': 'cd ~/.openclaw && git pull && npm install',
-                'icon': '6',
                 'color': C['warning'],
-                'category': 'caution'
+                'safe': False
             },
             {
                 'label': 'Reboot Pi',
-                'desc': 'Restart the entire system',
+                'desc': 'System reboot',
                 'cmd': 'sudo reboot',
-                'icon': '7',
                 'color': C['error'],
-                'category': 'danger'
+                'safe': False
             },
             {
-                'label': 'Shutdown',
-                'desc': 'Power off completely',
+                'label': 'Shutdown Pi',
+                'desc': 'Power off system',
                 'cmd': 'sudo shutdown -h now',
-                'icon': '8',
                 'color': C['error'],
-                'category': 'danger'
+                'safe': False
+            },
+            {
+                'label': 'Screen Off',
+                'desc': 'Any key to wake',
+                'cmd': '__screen_off__',
+                'color': C['text_dim'],
+                'safe': True
             },
         ]
         
@@ -820,13 +718,13 @@ class DashboardApp:
                 os.execv(sys.executable, [sys.executable] + sys.argv)
                 return
             
-            # Safe commands run immediately, others need confirmation
-            if cmd.get('category', 'safe') == 'safe':
+            # Safe commands run immediately
+            if cmd['safe']:
                 self.command_running = cmd['label']
                 self.command_result = None
                 threading.Thread(target=self._run_command_async, args=(cmd,), daemon=True).start()
             else:
-                # Caution/Danger commands need confirmation
+                # Dangerous commands need confirmation
                 self.command_confirm = cmd_idx
                 
     def confirm_command(self, confirmed):
@@ -874,7 +772,7 @@ class DashboardApp:
     def draw_tabs(self):
         """Draw tab bar at top"""
         tab_h = 36
-        tab_w = SCREEN_WIDTH // 5
+        tab_w = SCREEN_WIDTH // 4
         
         for i, name in enumerate(MODE_NAMES):
             x = i * tab_w
@@ -889,10 +787,6 @@ class DashboardApp:
             text_color = C['text_bright'] if is_active else C['text_dim']
             label = self.fonts['msg'].render(f"F{i+1} {name}", True, text_color)
             self.screen.blit(label, (x + (tab_w - label.get_width()) // 2, 9))
-        
-        # Version indicator
-        ver_surf = self.fonts['status'].render("v15", True, C['text_muted'])
-        self.screen.blit(ver_surf, (SCREEN_WIDTH - ver_surf.get_width() - 8, 12))
             
         pygame.draw.line(self.screen, C['border'], (0, tab_h), (SCREEN_WIDTH, tab_h), 1)
         
@@ -1102,532 +996,179 @@ class DashboardApp:
         self.screen.blit(hint_surf, ((SCREEN_WIDTH - hint_surf.get_width()) // 2, SCREEN_HEIGHT - 25))
         
     def draw_tasks(self):
-        """WOW Edition - Premium animated task interface"""
-        import math
+        """Draw local task cards"""
+        y_start = 45
+        card_height = 44
+        card_margin = 6
+        max_visible = 9
         
-        # Initialize state
-        if not hasattr(self, 'todoist_last_sync'):
-            self.todoist_last_sync = 0
-            self.todoist_sync_status = 'live'
-        if not hasattr(self, 'task_filter'):
-            self.task_filter = 'all'
-        if not hasattr(self, 'wow_anim_time'):
-            self.wow_anim_time = 0
-        if not hasattr(self, 'task_expanded'):
-            self.task_expanded = set()
+        # Header with count
+        count_text = f"Tasks ({len(self.tasks)})"
+        header = self.fonts['title'].render(count_text, True, C['text_bright'])
+        self.screen.blit(header, (16, y_start))
         
-        self.wow_anim_time += 0.03  # Animation timer
-        
-        # Auto-refresh every 30 seconds
-        if time.time() - self.todoist_last_sync > 30:
-            self._load_todoist_tasks()
-        
-        # Filter tasks
-        all_tasks = self.tasks
-        projects = {
-            'all': {'name': 'All Tasks', 'color': (100, 140, 220), 'tasks': all_tasks},
-            'inbox': {'name': 'Inbox', 'color': (130, 180, 255), 'tasks': [t for t in all_tasks if 'inbox' in t.get('project', '').lower() or not t.get('project')]},
-            'salon': {'name': 'Nail Salon', 'color': (255, 140, 180), 'tasks': [t for t in all_tasks if 'salon' in t.get('project', '').lower() or 'nail' in t.get('project', '').lower()]},
-        }
-        
-        if self.task_filter == 'today':
-            filtered = [t for t in all_tasks if 'today' in t.get('due', '').lower()]
-        elif self.task_filter == 'overdue':
-            filtered = [t for t in all_tasks if any(x in t.get('due', '').lower() for x in ['overdue', 'yesterday'])]
-        elif self.task_filter in projects:
-            filtered = projects[self.task_filter]['tasks']
+        if not self.tasks:
+            empty = self.fonts['msg'].render("No tasks. Press N to add one.", True, C['text_dim'])
+            self.screen.blit(empty, (16, y_start + 50))
         else:
-            filtered = all_tasks
-        
-        # Stats
-        total = len(all_tasks)
-        today_count = len([t for t in all_tasks if 'today' in t.get('due', '').lower()])
-        overdue_count = len([t for t in all_tasks if any(x in t.get('due', '').lower() for x in ['overdue', 'yesterday'])])
-        
-        # ═══════════════════════════════════════════════════════════════
-        # BACKGROUND - Animated gradient
-        # ═══════════════════════════════════════════════════════════════
-        # Dark base with subtle animated gradient
-        for y in range(36, SCREEN_HEIGHT):
-            progress = (y - 36) / (SCREEN_HEIGHT - 36)
-            wave = math.sin(self.wow_anim_time * 0.5 + progress * 2) * 3
-            r = int(18 + wave)
-            g = int(20 + wave)
-            b = int(28 + progress * 8 + wave)
-            pygame.draw.line(self.screen, (max(0,min(255,r)), max(0,min(255,g)), max(0,min(255,b))), (0, y), (SCREEN_WIDTH, y))
-        
-        # ═══════════════════════════════════════════════════════════════
-        # LEFT SIDEBAR - Project cards with progress rings (180px)
-        # ═══════════════════════════════════════════════════════════════
-        sidebar_w = 175
-        sidebar_x = 8
-        
-        # Sidebar glass panel
-        sidebar_surf = pygame.Surface((sidebar_w, SCREEN_HEIGHT - 50), pygame.SRCALPHA)
-        sidebar_surf.fill((30, 32, 45, 200))
-        self.screen.blit(sidebar_surf, (sidebar_x, 44))
-        pygame.draw.rect(self.screen, (60, 65, 85), (sidebar_x, 44, sidebar_w, SCREEN_HEIGHT - 50), width=1, border_radius=12)
-        
-        # Project cards with progress rings
-        card_y = 54
-        proj_items = [
-            ('all', 'All', total, (100, 140, 220)),
-            ('inbox', 'Inbox', len(projects['inbox']['tasks']), (130, 180, 255)),
-            ('salon', 'Salon', len(projects['salon']['tasks']), (255, 140, 180)),
-            ('today', 'Today', today_count, (255, 200, 80)),
-            ('overdue', 'Late', overdue_count, (255, 90, 90)),
-        ]
-        
-        for proj_id, proj_name, count, color in proj_items:
-            is_active = self.task_filter == proj_id
-            card_h = 48
-            
-            # Card background with glow for active
-            if is_active:
-                # Animated glow
-                glow_intensity = 0.6 + 0.4 * math.sin(self.wow_anim_time * 3)
-                glow_color = (int(color[0] * glow_intensity), int(color[1] * glow_intensity), int(color[2] * glow_intensity))
-                for g in range(4, 0, -1):
-                    glow_surf = pygame.Surface((sidebar_w - 12 + g*4, card_h + g*4), pygame.SRCALPHA)
-                    glow_surf.fill((*glow_color, int(30 * g)))
-                    self.screen.blit(glow_surf, (sidebar_x + 6 - g*2, card_y - g*2))
-                pygame.draw.rect(self.screen, (50, 55, 70), (sidebar_x + 6, card_y, sidebar_w - 12, card_h), border_radius=10)
-            else:
-                pygame.draw.rect(self.screen, (35, 38, 50), (sidebar_x + 6, card_y, sidebar_w - 12, card_h), border_radius=10)
-            
-            # Progress ring
-            ring_x = sidebar_x + 32
-            ring_y = card_y + card_h // 2
-            ring_r = 16
-            
-            # Background ring
-            pygame.draw.circle(self.screen, (50, 52, 65), (ring_x, ring_y), ring_r, width=3)
-            
-            # Progress arc (animated)
-            if total > 0:
-                progress = count / total
-                end_angle = -math.pi/2 + progress * 2 * math.pi
-                if progress > 0:
-                    points = [(ring_x, ring_y)]
-                    for angle in [a * 0.1 for a in range(int(-math.pi/2 * 10), int(end_angle * 10) + 1)]:
-                        x = ring_x + int(ring_r * math.cos(angle))
-                        y = ring_y + int(ring_r * math.sin(angle))
-                        points.append((x, y))
-                    if len(points) > 2:
-                        # Draw arc segments
-                        for i in range(len(points) - 1):
-                            pygame.draw.line(self.screen, color, points[i], points[i+1], 3)
-            
-            # Count in center
-            count_surf = self.fonts['status'].render(str(count), True, color if is_active else (160, 165, 180))
-            self.screen.blit(count_surf, (ring_x - count_surf.get_width()//2, ring_y - count_surf.get_height()//2))
-            
-            # Project name
-            name_color = (240, 245, 255) if is_active else (140, 145, 160)
-            name_surf = self.fonts['msg'].render(proj_name, True, name_color)
-            self.screen.blit(name_surf, (ring_x + ring_r + 10, card_y + card_h//2 - name_surf.get_height()//2))
-            
-            card_y += card_h + 6
-        
-        # ═══════════════════════════════════════════════════════════════
-        # MAIN AREA - Focus card + task list (600px)
-        # ═══════════════════════════════════════════════════════════════
-        main_x = sidebar_x + sidebar_w + 10
-        main_w = SCREEN_WIDTH - main_x - 8
-        
-        # Build display list
-        display_list = []
-        for task in filtered:
-            display_list.append({'task': task, 'indent': 0})
-            subtasks = task.get('subtasks', [])
-            if subtasks and task['id'] in self.task_expanded:
-                for sub in subtasks:
-                    display_list.append({'task': sub, 'indent': 1})
-        
-        if not display_list:
-            # Beautiful empty state with animation
-            empty_y = 180
-            
-            # Floating card
-            float_offset = math.sin(self.wow_anim_time * 2) * 5
-            card_y_pos = empty_y + float_offset
-            
-            pygame.draw.rect(self.screen, (40, 45, 60), (main_x + 80, card_y_pos, main_w - 160, 140), border_radius=24)
-            
-            # Animated checkmark
-            check_x = main_x + main_w // 2
-            check_y = int(card_y_pos + 55)
-            pulse = 0.8 + 0.2 * math.sin(self.wow_anim_time * 3)
-            radius = int(30 * pulse)
-            
-            # Glow
-            for g in range(3):
-                glow_r = radius + g * 4
-                pygame.draw.circle(self.screen, (60, 180, 100, 50), (check_x, check_y), glow_r, width=2)
-            
-            pygame.draw.circle(self.screen, (80, 200, 120), (check_x, check_y), radius, width=4)
-            pygame.draw.line(self.screen, (80, 200, 120), (check_x - 12, check_y + 2), (check_x - 2, check_y + 12), 4)
-            pygame.draw.line(self.screen, (80, 200, 120), (check_x - 2, check_y + 12), (check_x + 14, check_y - 8), 4)
-            
-            msg_surf = self.fonts['title'].render("All clear!", True, (200, 205, 220))
-            self.screen.blit(msg_surf, (check_x - msg_surf.get_width()//2, int(card_y_pos + 95)))
-        else:
-            # Scroll handling
-            if self.task_selected >= len(display_list):
-                self.task_selected = max(0, len(display_list) - 1)
-            
-            # FOCUS CARD - Big card for selected task
-            if 0 <= self.task_selected < len(display_list):
-                focus_task = display_list[self.task_selected]['task']
-                focus_y = 50
-                focus_h = 130
-                
-                priority = focus_task.get('priority', 1)
-                p_colors = {4: (255, 90, 90), 3: (255, 180, 70), 2: (100, 160, 255), 1: (100, 105, 130)}
-                p_color = p_colors.get(priority, p_colors[1])
-                
-                # Animated glow border
-                glow_phase = self.wow_anim_time * 2
-                glow_intensity = 0.5 + 0.5 * math.sin(glow_phase)
-                
-                # Glass card with glow
-                for g in range(5, 0, -1):
-                    glow_c = (int(p_color[0] * glow_intensity * 0.3), int(p_color[1] * glow_intensity * 0.3), int(p_color[2] * glow_intensity * 0.3))
-                    pygame.draw.rect(self.screen, glow_c, (main_x - g*2, focus_y - g*2, main_w + g*4, focus_h + g*4), border_radius=20)
-                
-                # Card background
-                pygame.draw.rect(self.screen, (35, 40, 55), (main_x, focus_y, main_w, focus_h), border_radius=16)
-                pygame.draw.rect(self.screen, p_color, (main_x, focus_y, 6, focus_h), border_top_left_radius=16, border_bottom_left_radius=16)
-                
-                # Top highlight
-                pygame.draw.line(self.screen, (70, 75, 95), (main_x + 16, focus_y + 2), (main_x + main_w - 16, focus_y + 2), 1)
-                
-                # Priority badge
-                badge_labels = {4: 'URGENT', 3: 'HIGH', 2: 'MEDIUM', 1: ''}
-                if priority > 1:
-                    badge_text = badge_labels[priority]
-                    badge_surf = self.fonts['status'].render(badge_text, True, (255, 255, 255))
-                    badge_w = badge_surf.get_width() + 16
-                    pygame.draw.rect(self.screen, p_color, (main_x + main_w - badge_w - 12, focus_y + 12, badge_w, 22), border_radius=11)
-                    self.screen.blit(badge_surf, (main_x + main_w - badge_w - 4, focus_y + 15))
-                
-                # Task title - large
-                title_font = self.fonts['menu_title']
-                title_text = focus_task.get('content', '')[:45] + ('...' if len(focus_task.get('content', '')) > 45 else '')
-                title_surf = title_font.render(title_text, True, (235, 240, 255))
-                self.screen.blit(title_surf, (main_x + 20, focus_y + 18))
-                
-                # Due date with icon
-                due = focus_task.get('due', '')
-                if due:
-                    due_color = (255, 100, 100) if 'overdue' in due.lower() else (180, 185, 200)
-                    due_icon = '⏰ ' if 'today' in due.lower() else '📅 '
-                    due_surf = self.fonts['msg'].render(due_icon + due, True, due_color)
-                    self.screen.blit(due_surf, (main_x + 20, focus_y + 55))
-                
-                # Description preview
-                desc = focus_task.get('description', '')
-                if desc:
-                    desc_text = desc[:70] + ('...' if len(desc) > 70 else '')
-                    desc_surf = self.fonts['status'].render(desc_text, True, (120, 125, 145))
-                    self.screen.blit(desc_surf, (main_x + 20, focus_y + 80))
-                
-                # Subtask count
-                subtasks = focus_task.get('subtasks', [])
-                if subtasks:
-                    sub_text = f"📋 {len(subtasks)} subtasks"
-                    sub_surf = self.fonts['status'].render(sub_text, True, (130, 170, 220))
-                    self.screen.blit(sub_surf, (main_x + 20, focus_y + 102))
-                
-                # Recurring indicator
-                if focus_task.get('isRecurring'):
-                    rec_surf = self.fonts['status'].render('🔄 Recurring', True, (140, 200, 160))
-                    self.screen.blit(rec_surf, (main_x + 150, focus_y + 102))
-            
-            # TASK LIST - Below focus card
-            list_y = 190
-            row_h = 44
-            max_visible = 5
-            
+            # Ensure scroll keeps selection visible
             if self.task_selected < self.task_scroll:
                 self.task_scroll = self.task_selected
             elif self.task_selected >= self.task_scroll + max_visible:
                 self.task_scroll = self.task_selected - max_visible + 1
+                
+            # Draw visible task cards
+            visible_tasks = self.tasks[self.task_scroll:self.task_scroll + max_visible]
+            card_y = y_start + 32
             
-            visible = display_list[self.task_scroll:self.task_scroll + max_visible]
-            row_y = list_y
-            
-            for i, item in enumerate(visible):
-                task = item['task']
-                indent = item['indent']
+            for i, task in enumerate(visible_tasks):
                 actual_idx = self.task_scroll + i
                 is_selected = actual_idx == self.task_selected
+                is_done = task.get('done', False)
                 priority = task.get('priority', 1)
-                due = task.get('due', '')
-                content = task.get('content', '') or '(empty)'
                 
-                p_colors = {4: (255, 90, 90), 3: (255, 180, 70), 2: (100, 160, 255), 1: (70, 75, 95)}
-                p_color = p_colors.get(priority, p_colors[1])
+                # Card background
+                card_rect = (8, card_y, SCREEN_WIDTH - 16, card_height)
+                bg_color = C['bg_item_hover'] if is_selected else C['bg_item']
+                pygame.draw.rect(self.screen, bg_color, card_rect, border_radius=6)
                 
-                # Row background
-                indent_px = indent * 24
-                row_x = main_x + indent_px
-                row_w = main_w - indent_px
-                
+                # Selection indicator
                 if is_selected:
-                    # Subtle highlight
-                    pygame.draw.rect(self.screen, (45, 50, 68), (row_x, row_y, row_w, row_h), border_radius=8)
-                    # Selection indicator
-                    pygame.draw.rect(self.screen, p_color, (row_x, row_y + 8, 3, row_h - 16), border_radius=2)
+                    pygame.draw.rect(self.screen, C['accent'], (8, card_y, 3, card_height), border_radius=2)
                 
-                # Check for subtasks
-                subtasks = task.get('subtasks', [])
-                has_subtasks = len(subtasks) > 0 and indent == 0
-                is_expanded = task['id'] in self.task_expanded if has_subtasks else False
+                # Priority indicator (left side colored bar)
+                priority_colors = {1: C['text_dim'], 2: C['success'], 3: C['warning'], 4: C['error']}
+                p_color = priority_colors.get(priority, C['text_dim'])
+                pygame.draw.rect(self.screen, p_color, (14, card_y + 8, 4, card_height - 16), border_radius=2)
                 
-                # Checkbox
-                cb_x = row_x + 20
-                cb_y = row_y + row_h // 2
-                pygame.draw.circle(self.screen, p_color if priority > 1 else (60, 65, 80), (cb_x, cb_y), 10, width=2)
-                if priority >= 3:
-                    pygame.draw.circle(self.screen, p_color, (cb_x, cb_y), 5)
+                # Done checkbox
+                checkbox_x = 26
+                checkbox_y = card_y + (card_height - 16) // 2
+                checkbox_rect = (checkbox_x, checkbox_y, 16, 16)
+                pygame.draw.rect(self.screen, C['border'], checkbox_rect, width=2, border_radius=3)
+                if is_done:
+                    # Checkmark
+                    pygame.draw.line(self.screen, C['success'], (checkbox_x + 3, checkbox_y + 8), (checkbox_x + 6, checkbox_y + 12), 2)
+                    pygame.draw.line(self.screen, C['success'], (checkbox_x + 6, checkbox_y + 12), (checkbox_x + 13, checkbox_y + 4), 2)
                 
-                # Task text
-                text_color = (220, 225, 240) if is_selected else (160, 165, 180)
-                max_len = 28 - indent * 3
-                display_text = content[:max_len] + ('...' if len(content) > max_len else '')
-                text_surf = self.fonts['msg'].render(display_text, True, text_color)
-                self.screen.blit(text_surf, (cb_x + 18, row_y + row_h//2 - text_surf.get_height()//2))
-                
-                # Subtask indicator RIGHT AFTER task name
-                text_end_x = cb_x + 18 + text_surf.get_width() + 6
-                if has_subtasks:
-                    chevron_color = (130, 170, 220) if is_selected else (100, 140, 200)
-                    sub_text = f"{len(subtasks)}"
-                    sub_surf = self.fonts['status'].render(sub_text, True, chevron_color)
-                    self.screen.blit(sub_surf, (text_end_x, row_y + row_h//2 - sub_surf.get_height()//2))
+                # Task content
+                content_x = 50
+                if is_selected and self.task_editing:
+                    # Editing mode - show input with cursor
+                    display_text = self.task_edit_text
+                    text_color = C['text_bright']
+                    text_surf = self.fonts['msg'].render(display_text[:40], True, text_color)
+                    self.screen.blit(text_surf, (content_x, card_y + 10))
                     
-                    chev_x = text_end_x + sub_surf.get_width() + 6
-                    chev_y = row_y + row_h // 2
-                    if is_expanded:
-                        # Down chevron (expanded)
-                        pygame.draw.line(self.screen, chevron_color, (chev_x - 4, chev_y - 3), (chev_x, chev_y + 2), 2)
-                        pygame.draw.line(self.screen, chevron_color, (chev_x, chev_y + 2), (chev_x + 4, chev_y - 3), 2)
-                    else:
-                        # Right chevron (collapsed)
-                        pygame.draw.line(self.screen, chevron_color, (chev_x - 2, chev_y - 4), (chev_x + 3, chev_y), 2)
-                        pygame.draw.line(self.screen, chevron_color, (chev_x + 3, chev_y), (chev_x - 2, chev_y + 4), 2)
+                    # Draw cursor
+                    cursor_x = content_x + self.fonts['msg'].size(display_text[:self.task_edit_cursor])[0]
+                    if int(time.time() * 2) % 2:
+                        pygame.draw.line(self.screen, C['cursor'], (cursor_x, card_y + 8), (cursor_x, card_y + 28), 2)
+                else:
+                    # Normal display
+                    content = task.get('content', '')[:40] or '(empty)'
+                    text_color = C['text_dim'] if is_done else C['text']
+                    text_surf = self.fonts['msg'].render(content, True, text_color)
+                    self.screen.blit(text_surf, (content_x, card_y + 10))
                 
-                # Right side for due pill
-                right_x = row_x + row_w - 12
-                
-                # Due pill on right side
-                if due and not is_selected:
-                    due_text = due[:6]
-                    due_bg = (180, 60, 60) if 'overdue' in due.lower() else (50, 55, 70)
-                    due_surf = self.fonts['status'].render(due_text, True, (200, 205, 220))
-                    pill_w = due_surf.get_width() + 12
-                    pill_x = right_x - pill_w
-                    pygame.draw.rect(self.screen, due_bg, (pill_x, row_y + row_h//2 - 10, pill_w, 20), border_radius=10)
-                    self.screen.blit(due_surf, (pill_x + 6, row_y + row_h//2 - due_surf.get_height()//2))
-                
-                row_y += row_h
-            
-            # Scroll indicators with style
-            if self.task_scroll > 0:
-                up_surf = self.fonts['status'].render(f"▲ {self.task_scroll} above", True, (100, 140, 220))
-                self.screen.blit(up_surf, (main_x + main_w//2 - up_surf.get_width()//2, list_y - 18))
-            
-            remaining = len(display_list) - self.task_scroll - max_visible
-            if remaining > 0:
-                down_surf = self.fonts['status'].render(f"▼ {remaining} below", True, (100, 140, 220))
-                self.screen.blit(down_surf, (main_x + main_w//2 - down_surf.get_width()//2, row_y + 4))
+                card_y += card_height + card_margin
         
-        # ═══════════════════════════════════════════════════════════════
-        # FOOTER - Stylish hints + sync indicator
-        # ═══════════════════════════════════════════════════════════════
+        # Help bar at bottom
         if self.task_editing:
-            hint = "Enter: Save  •  Esc: Cancel"
+            hint = "Enter: Save | Esc: Cancel"
         else:
-            hint = "↑↓ Navigate  •  Space Complete  •  1-5 Filter  •  N New  •  R Sync"
-        hint_surf = self.fonts['status'].render(hint, True, (90, 95, 115))
-        self.screen.blit(hint_surf, ((SCREEN_WIDTH - hint_surf.get_width())//2, SCREEN_HEIGHT - 18))
+            hint = "N: New | Enter: Edit | Space: Done | P: Priority | Del: Remove"
+        hint_surf = self.fonts['status'].render(hint, True, C['text_muted'])
+        hint_x = (SCREEN_WIDTH - hint_surf.get_width()) // 2
+        self.screen.blit(hint_surf, (hint_x, SCREEN_HEIGHT - 22))
         
-        # Sync indicator in bottom-right of panel
-        sync_status = getattr(self, 'todoist_sync_status', 'live')
-        if sync_status == 'live':
-            sync_text = "● Synced"
-            sync_color = (80, 200, 120)
-        elif sync_status == 'syncing':
-            sync_text = "◐ Syncing"
-            sync_color = (220, 180, 60)
-        else:
-            sync_text = "✗ Error"
-            sync_color = (220, 80, 80)
-        sync_surf = self.fonts['status'].render(sync_text, True, sync_color)
-        self.screen.blit(sync_surf, (SCREEN_WIDTH - sync_surf.get_width() - 12, SCREEN_HEIGHT - 18))
-
-
     def draw_commands(self):
-        """Draw commands panel with modern card design"""
+        """Draw commands panel with cards"""
+        y_start = 36
         
         # Show confirmation dialog if active
         if self.command_confirm is not None:
             self._draw_confirm_dialog()
             return
-        
+            
         # Show running indicator if active
         if self.command_running:
-            self._draw_command_running()
+            running_text = f"Running: {self.command_running}..."
+            running_surf = self.fonts['msg'].render(running_text[:40], True, C['accent'])
+            self.screen.blit(running_surf, (16, y_start))
+            
+            # Spinner
+            dots = "●" * (int(time.time() * 2) % 3 + 1)
+            dots_surf = self.fonts['title'].render(dots, True, C['accent'])
+            self.screen.blit(dots_surf, (16, y_start + 25))
             return
-        
+            
         # Show result if available
         if self.command_result:
-            self._draw_command_result()
+            result_type, result_msg = self.command_result
+            color = C['success'] if result_type == 'success' else C['error']
+            
+            # Result header
+            header = "✓ Success" if result_type == 'success' else "✗ Error"
+            header_surf = self.fonts['title'].render(header, True, color)
+            self.screen.blit(header_surf, (16, y_start))
+            
+            # Result message
+            msg_surf = self.fonts['msg'].render(result_msg[:45], True, C['text'])
+            self.screen.blit(msg_surf, (16, y_start + 30))
+            
+            # Hint
+            hint = "Press any key to continue"
+            hint_surf = self.fonts['status'].render(hint, True, C['text_dim'])
+            self.screen.blit(hint_surf, (16, y_start + 55))
             return
         
+        # Draw command cards
         commands = self.get_commands()
         
-        # Layout: 2 columns, 4 rows - fills the screen nicely
-        card_w = 380
+        # 3x3 grid - fits 800x480 screen
+        card_w = 245
         card_h = 80
         margin_x = 15
-        margin_y = 65
-        spacing_x = 10
-        spacing_y = 10
+        margin_y = 10
+        spacing_x = 12
+        spacing_y = 12
         
         for idx, cmd in enumerate(commands):
-            col = idx % 2
-            row = idx // 2
+            col = idx % 3
+            row = idx // 3
             
             x = margin_x + col * (card_w + spacing_x)
-            y = margin_y + row * (card_h + spacing_y)
+            y = y_start + row * (card_h + spacing_y)
             
+            # Highlight if selected
             is_selected = idx == self.command_selection
-            category = cmd.get('category', 'safe')
-            
-            # Card background with gradient effect
-            if is_selected:
-                # Glow effect
-                glow_color = cmd['color']
-                pygame.draw.rect(self.screen, glow_color, (x - 2, y - 2, card_w + 4, card_h + 4), border_radius=14)
-            
             bg_color = C['bg_item_hover'] if is_selected else C['bg_item']
-            pygame.draw.rect(self.screen, bg_color, (x, y, card_w, card_h), border_radius=12)
             
-            # Thick color bar on left based on category
-            bar_w = 8
-            pygame.draw.rect(self.screen, cmd['color'], (x, y, bar_w, card_h), 
-                           border_top_left_radius=12, border_bottom_left_radius=12)
+            # Card background
+            pygame.draw.rect(self.screen, bg_color, (x, y, card_w, card_h), border_radius=8)
+            pygame.draw.rect(self.screen, cmd['color'], (x, y, card_w, card_h), width=2, border_radius=8)
             
-            # Icon circle
-            icon_x = x + 45
-            icon_y = y + card_h // 2
-            icon_r = 24
-            icon_bg = cmd['color'] if is_selected else (60, 60, 75)
-            pygame.draw.circle(self.screen, icon_bg, (icon_x, icon_y), icon_r)
-            
-            # Icon letter
-            icon = cmd.get('icon', '?')
-            icon_surf = self.fonts['title'].render(icon, True, C['text_bright'])
-            icon_text_x = icon_x - icon_surf.get_width() // 2
-            icon_text_y = icon_y - icon_surf.get_height() // 2
-            self.screen.blit(icon_surf, (icon_text_x, icon_text_y))
-            
-            # Label - bigger and bolder
-            label_surf = self.fonts['title'].render(cmd['label'], True, C['text_bright'])
-            self.screen.blit(label_surf, (x + 80, y + 18))
+            # Label
+            label_surf = self.fonts['button'].render(cmd['label'], True, C['text_bright'])
+            label_x = x + (card_w - label_surf.get_width()) // 2
+            self.screen.blit(label_surf, (label_x, y + 10))
             
             # Description
-            desc_surf = self.fonts['msg'].render(cmd['desc'], True, C['text_dim'])
-            self.screen.blit(desc_surf, (x + 80, y + 50))
+            desc_surf = self.fonts['button_desc'].render(cmd['desc'], True, C['text_dim'])
+            desc_x = x + (card_w - desc_surf.get_width()) // 2
+            self.screen.blit(desc_surf, (desc_x, y + 30))
             
-            # Warning icon on right for non-safe commands
-            if category == 'danger':
-                # Red warning triangle
-                badge_x = x + card_w - 40
-                badge_y = y + card_h // 2
-                pygame.draw.circle(self.screen, C['error'], (badge_x, badge_y), 16)
-                warn_surf = self.fonts['title'].render("!", True, C['text_bright'])
-                self.screen.blit(warn_surf, (badge_x - warn_surf.get_width() // 2, badge_y - warn_surf.get_height() // 2))
-            elif category == 'caution':
-                # Yellow warning
-                badge_x = x + card_w - 40
-                badge_y = y + card_h // 2
-                pygame.draw.circle(self.screen, C['warning'], (badge_x, badge_y), 16)
-                warn_surf = self.fonts['title'].render("!", True, (40, 40, 40))
-                self.screen.blit(warn_surf, (badge_x - warn_surf.get_width() // 2, badge_y - warn_surf.get_height() // 2))
+            # Safety indicator
+            if not cmd['safe']:
+                warn_surf = self.fonts['status'].render("⚠", True, C['warning'])
+                self.screen.blit(warn_surf, (x + 6, y + 6))
         
-        # Footer
-        help_text = "1-8: Quick Run  |  Arrows: Navigate  |  Enter: Execute"
-        help_surf = self.fonts['status'].render(help_text, True, C['text_muted'])
+        # Instructions
+        help_text = "↑↓←→: Navigate  Enter: Execute  ESC: Cancel"
+        help_surf = self.fonts['status'].render(help_text, True, C['text_dim'])
         help_x = (SCREEN_WIDTH - help_surf.get_width()) // 2
-        self.screen.blit(help_surf, (help_x, SCREEN_HEIGHT - 18))
-    
-    def _draw_command_running(self):
-        """Draw running command indicator"""
-        # Center card
-        card_w, card_h = 350, 120
-        x = (SCREEN_WIDTH - card_w) // 2
-        y = (SCREEN_HEIGHT - card_h) // 2
-        
-        pygame.draw.rect(self.screen, C['bg_item'], (x, y, card_w, card_h), border_radius=16)
-        pygame.draw.rect(self.screen, C['accent'], (x, y, card_w, card_h), width=3, border_radius=16)
-        
-        # Spinner animation
-        spinner_chars = "◐◓◑◒"
-        spinner = spinner_chars[int(time.time() * 4) % 4]
-        spinner_surf = self.fonts['menu_title'].render(spinner, True, C['accent'])
-        self.screen.blit(spinner_surf, (x + card_w // 2 - 15, y + 20))
-        
-        # Running text
-        text = f"Running: {self.command_running}"
-        if len(text) > 35:
-            text = text[:32] + "..."
-        text_surf = self.fonts['msg'].render(text, True, C['text'])
-        text_x = x + (card_w - text_surf.get_width()) // 2
-        self.screen.blit(text_surf, (text_x, y + 65))
-        
-        # Please wait
-        wait_surf = self.fonts['status'].render("Please wait...", True, C['text_dim'])
-        wait_x = x + (card_w - wait_surf.get_width()) // 2
-        self.screen.blit(wait_surf, (wait_x, y + 92))
-    
-    def _draw_command_result(self):
-        """Draw command result"""
-        result_type, result_msg = self.command_result
-        is_success = result_type == 'success'
-        
-        # Center card
-        card_w, card_h = 400, 140
-        x = (SCREEN_WIDTH - card_w) // 2
-        y = (SCREEN_HEIGHT - card_h) // 2
-        
-        border_color = C['success'] if is_success else C['error']
-        pygame.draw.rect(self.screen, C['bg_item'], (x, y, card_w, card_h), border_radius=16)
-        pygame.draw.rect(self.screen, border_color, (x, y, card_w, card_h), width=3, border_radius=16)
-        
-        # Icon and header
-        icon = "✓" if is_success else "✗"
-        header = "Success" if is_success else "Error"
-        icon_surf = self.fonts['menu_title'].render(icon, True, border_color)
-        header_surf = self.fonts['title'].render(header, True, border_color)
-        self.screen.blit(icon_surf, (x + card_w // 2 - 60, y + 18))
-        self.screen.blit(header_surf, (x + card_w // 2 - 30, y + 20))
-        
-        # Result message (wrap if needed)
-        msg_lines = [result_msg[i:i+45] for i in range(0, len(result_msg), 45)][:2]
-        msg_y = y + 60
-        for line in msg_lines:
-            msg_surf = self.fonts['msg'].render(line, True, C['text'])
-            msg_x = x + (card_w - msg_surf.get_width()) // 2
-            self.screen.blit(msg_surf, (msg_x, msg_y))
-            msg_y += 24
-        
-        # Hint
-        hint_surf = self.fonts['status'].render("Press any key to continue", True, C['text_muted'])
-        hint_x = x + (card_w - hint_surf.get_width()) // 2
-        self.screen.blit(hint_surf, (hint_x, y + card_h - 28))
+        self.screen.blit(help_surf, (help_x, SCREEN_HEIGHT - 20))
         
     def _draw_confirm_dialog(self):
         """Draw confirmation dialog"""
@@ -1685,520 +1226,6 @@ class DashboardApp:
         confirm_text = self.fonts['button'].render("⏎ Confirm", True, C['text_bright'])
         confirm_text_x = confirm_x + (confirm_w - confirm_text.get_width()) // 2
         self.screen.blit(confirm_text, (confirm_text_x, button_y + 6))
-    
-    def draw_kanban(self):
-        """WOW Kanban - All 7 columns visible, compact cards, animated"""
-        import math
-        
-        # Auto-refresh every 5 seconds
-        now = time.time()
-        if not hasattr(self, 'kanban_last_refresh'):
-            self.kanban_last_refresh = 0
-        if now - self.kanban_last_refresh > 5:
-            self._load_kanban_data()
-            self.kanban_last_refresh = now
-        
-        # Animation timer
-        if not hasattr(self, 'kanban_anim'):
-            self.kanban_anim = 0
-        self.kanban_anim += 0.03
-        
-        # Initialize state
-        if not hasattr(self, 'kanban_col'):
-            self.kanban_col = 0
-            self.kanban_card = 0
-            self.kanban_board = 'salon'
-            self.kanban_detail = False
-            self.kanban_scroll = {}
-            self.kanban_sync_status = 'live'
-            self.kanban_sync_time = 0
-        
-        all_columns = ['Not Started', 'Research', 'Active', 'Stuck', 'Review', 'Implement', 'Finished']
-        col_colors = {
-            'Not Started': (120, 120, 160), 'Research': (80, 150, 220), 
-            'Active': (80, 190, 100), 'Stuck': (220, 80, 80),
-            'Review': (220, 170, 60), 'Implement': (150, 100, 200), 'Finished': (60, 170, 100)
-        }
-        col_short = {'Not Started': 'TODO', 'Research': 'RSRCH', 'Active': 'ACTV', 
-                     'Stuck': 'STUCK', 'Review': 'REVW', 'Implement': 'IMPL', 'Finished': 'DONE'}
-        
-        # ═══════════════════════════════════════════════════════════════
-        # ANIMATED BACKGROUND
-        # ═══════════════════════════════════════════════════════════════
-        for y in range(36, SCREEN_HEIGHT):
-            progress = (y - 36) / (SCREEN_HEIGHT - 36)
-            wave = math.sin(self.kanban_anim * 0.3 + progress * 1.5) * 2
-            r = int(16 + wave)
-            g = int(18 + wave)
-            b = int(24 + progress * 6 + wave)
-            pygame.draw.line(self.screen, (max(0,min(255,r)), max(0,min(255,g)), max(0,min(255,b))), (0, y), (SCREEN_WIDTH, y))
-        
-        # ═══════════════════════════════════════════════════════════════
-        # HEADER - Board tabs + sync
-        # ═══════════════════════════════════════════════════════════════
-        header_y = 44
-        
-        boards = [
-            ('salon', 'Salon', (100, 140, 220)),
-            ('personal', 'Personal', (140, 180, 140)),
-            ('fasttrack', 'Fast', (255, 100, 80))
-        ]
-        
-        tab_x = 12
-        for board_id, board_name, board_color in boards:
-            is_active = self.kanban_board == board_id
-            
-            if board_id == 'fasttrack':
-                # Fast track pulses
-                pulse = 0.7 + 0.3 * math.sin(self.kanban_anim * 4)
-                display_color = (int(board_color[0] * pulse), int(board_color[1] * pulse), int(board_color[2] * pulse)) if is_active else (100, 60, 60)
-            else:
-                display_color = board_color if is_active else (80, 85, 100)
-            
-            tab_surf = self.fonts['msg'].render(board_name, True, display_color)
-            self.screen.blit(tab_surf, (tab_x, header_y))
-            
-            if is_active:
-                pygame.draw.rect(self.screen, display_color, (tab_x, header_y + 20, tab_surf.get_width(), 2))
-            
-            tab_x += tab_surf.get_width() + 20
-        
-        # Sync indicator
-        sync_status = getattr(self, 'kanban_sync_status', 'live')
-        sync_time = getattr(self, 'kanban_sync_time', 0)
-        if sync_status == 'syncing' and time.time() - sync_time > 1:
-            self.kanban_sync_status = 'live'
-            sync_status = 'live'
-        
-        sync_colors = {'live': (80, 200, 120), 'syncing': (220, 180, 60), 'error': (220, 80, 80)}
-        sync_texts = {'live': '●', 'syncing': '◐', 'error': '✗'}
-        sync_surf = self.fonts['msg'].render(sync_texts.get(sync_status, '●'), True, sync_colors.get(sync_status, (80, 200, 120)))
-        self.screen.blit(sync_surf, (SCREEN_WIDTH - 25, header_y))
-        
-        # ═══════════════════════════════════════════════════════════════
-        # COLUMNS - All 7 in one row
-        # ═══════════════════════════════════════════════════════════════
-        cols_y = header_y + 30
-        cols_h = SCREEN_HEIGHT - cols_y - 28
-        col_w = (SCREEN_WIDTH - 20) // 7
-        col_gap = 2
-        
-        for col_idx, col_name in enumerate(all_columns):
-            col_x = 10 + col_idx * col_w
-            is_selected_col = col_idx == self.kanban_col
-            col_color = col_colors[col_name]
-            
-            # Column background
-            bg_color = (35, 38, 50) if is_selected_col else (25, 28, 38)
-            pygame.draw.rect(self.screen, bg_color, (col_x, cols_y, col_w - col_gap, cols_h), border_radius=8)
-            
-            # Selected column glow
-            if is_selected_col:
-                glow_intensity = 0.5 + 0.3 * math.sin(self.kanban_anim * 3)
-                glow_color = (int(col_color[0] * glow_intensity * 0.4), int(col_color[1] * glow_intensity * 0.4), int(col_color[2] * glow_intensity * 0.4))
-                pygame.draw.rect(self.screen, glow_color, (col_x - 2, cols_y - 2, col_w - col_gap + 4, cols_h + 4), border_radius=10, width=2)
-            
-            # Column header
-            header_h = 28
-            pygame.draw.rect(self.screen, col_color, (col_x, cols_y, col_w - col_gap, header_h), border_top_left_radius=8, border_top_right_radius=8)
-            
-            # Column name (short)
-            name_text = col_short[col_name]
-            name_surf = self.fonts['status'].render(name_text, True, (255, 255, 255))
-            self.screen.blit(name_surf, (col_x + 6, cols_y + 6))
-            
-            # Card count
-            cards = self._get_kanban_column_cards(col_name)
-            count_surf = self.fonts['status'].render(str(len(cards)), True, (255, 255, 255, 180))
-            self.screen.blit(count_surf, (col_x + col_w - col_gap - count_surf.get_width() - 8, cols_y + 6))
-            
-            # Cards area
-            cards_y = cols_y + header_h + 4
-            card_h = 32
-            card_gap = 3
-            max_visible = (cols_h - header_h - 10) // (card_h + card_gap)
-            
-            scroll = self.kanban_scroll.get(col_idx, 0)
-            visible_cards = cards[scroll:scroll + max_visible]
-            
-            for card_idx, card in enumerate(visible_cards):
-                actual_idx = scroll + card_idx
-                is_selected_card = is_selected_col and actual_idx == self.kanban_card
-                card_y = cards_y + card_idx * (card_h + card_gap)
-                
-                # Check if fast track
-                is_fast = '🔥' in card.get('title', '') or card.get('fast_track', False)
-                
-                # Card background
-                if is_selected_card:
-                    # Selected card glow
-                    pulse = 0.7 + 0.3 * math.sin(self.kanban_anim * 4)
-                    card_bg = (int(60 * pulse), int(65 * pulse), int(85 * pulse))
-                    pygame.draw.rect(self.screen, col_color, (col_x + 3, card_y, col_w - col_gap - 6, card_h), border_radius=6, width=2)
-                elif is_fast:
-                    # Fast track items glow red
-                    pulse = 0.6 + 0.4 * math.sin(self.kanban_anim * 5)
-                    card_bg = (int(60 * pulse), int(30 * pulse), int(30 * pulse))
-                else:
-                    card_bg = (40, 43, 55)
-                
-                pygame.draw.rect(self.screen, card_bg, (col_x + 4, card_y, col_w - col_gap - 8, card_h), border_radius=5)
-                
-                # Fast track fire icon
-                text_x = col_x + 8
-                if is_fast:
-                    fire_color = (255, int(100 + 50 * math.sin(self.kanban_anim * 6)), 50)
-                    fire_surf = self.fonts['status'].render('🔥', True, fire_color)
-                    self.screen.blit(fire_surf, (text_x, card_y + 8))
-                    text_x += 16
-                
-                # Card title (truncated)
-                title = card.get('title', 'Untitled')
-                # Remove emoji prefixes for display
-                title = title.lstrip('🔥').strip()
-                max_chars = 10 if is_fast else 12
-                display_title = title[:max_chars] + ('…' if len(title) > max_chars else '')
-                title_color = (230, 235, 250) if is_selected_card else (170, 175, 190)
-                title_surf = self.fonts['status'].render(display_title, True, title_color)
-                self.screen.blit(title_surf, (text_x, card_y + 9))
-                
-                # Priority dot
-                priority = card.get('priority', 'green')
-                p_colors = {'red': (220, 70, 70), 'yellow': (220, 180, 50), 'green': (70, 180, 100)}
-                p_color = p_colors.get(priority, p_colors['green'])
-                pygame.draw.circle(self.screen, p_color, (col_x + col_w - col_gap - 14, card_y + card_h // 2), 4)
-            
-            # Scroll indicators
-            if scroll > 0:
-                pygame.draw.polygon(self.screen, (100, 105, 130), [
-                    (col_x + col_w // 2 - 6, cards_y - 2),
-                    (col_x + col_w // 2 + 6, cards_y - 2),
-                    (col_x + col_w // 2, cards_y - 8)
-                ])
-            if len(cards) > scroll + max_visible:
-                arrow_y = cols_y + cols_h - 8
-                pygame.draw.polygon(self.screen, (100, 105, 130), [
-                    (col_x + col_w // 2 - 6, arrow_y),
-                    (col_x + col_w // 2 + 6, arrow_y),
-                    (col_x + col_w // 2, arrow_y + 6)
-                ])
-        
-        # ═══════════════════════════════════════════════════════════════
-        # DETAIL POPUP
-        # ═══════════════════════════════════════════════════════════════
-        if self.kanban_detail:
-            self._draw_kanban_detail()
-        
-        # Floating card when holding
-        if hasattr(self, 'kanban_holding') and self.kanban_holding:
-            # Draw ghost card at cursor column
-            ghost_col = self.kanban_col
-            ghost_x = 10 + ghost_col * col_w
-            ghost_y = cols_y + 40
-            
-            pulse = 0.7 + 0.3 * math.sin(self.kanban_anim * 5)
-            pygame.draw.rect(self.screen, (int(100 * pulse), int(140 * pulse), int(220 * pulse)), 
-                           (ghost_x + 4, ghost_y, col_w - col_gap - 8, 32), border_radius=5, width=2)
-            
-            title = self.kanban_holding.get('title', 'Moving...')[:12]
-            title_surf = self.fonts['status'].render(title, True, (200, 210, 240))
-            self.screen.blit(title_surf, (ghost_x + 10, ghost_y + 8))
-        
-        # ═══════════════════════════════════════════════════════════════
-        # FOOTER
-        # ═══════════════════════════════════════════════════════════════
-        if hasattr(self, 'kanban_holding') and self.kanban_holding:
-            hint = "←→ Move  •  Space Place  •  Esc Cancel"
-            hint_color = (220, 180, 80)
-        else:
-            hint = "←→ Column  •  ↑↓ Card  •  Space Grab  •  Enter Detail  •  Tab Board"
-            hint_color = (90, 95, 115)
-        hint_surf = self.fonts['status'].render(hint, True, hint_color)
-        self.screen.blit(hint_surf, ((SCREEN_WIDTH - hint_surf.get_width())//2, SCREEN_HEIGHT - 18))
-
-
-    def _get_kanban_column_cards(self, col_name):
-        """Get cards for a column"""
-        return self.kanban_data.get(col_name, [])
-    
-    def _draw_kanban_column(self, x, y, w, h, col_name, col_idx, col_colors, col_icons):
-        """Draw a single kanban column with scroll support"""
-        is_selected = col_idx == self.kanban_col
-        cards = self.kanban_data.get(col_name, [])
-        col_color = col_colors.get(col_name, C['text_dim'])
-        
-        # Get scroll offset for this column
-        scroll = self.kanban_scroll.get(col_idx, 0)
-        
-        # Column container with selection highlight
-        if is_selected:
-            pygame.draw.rect(self.screen, col_color, (x - 2, y - 2, w + 4, h + 4), width=3, border_radius=10)
-        
-        # Header
-        pygame.draw.rect(self.screen, col_color, (x, y, w, 26), border_radius=6)
-        icon = col_icons.get(col_name, '📌')
-        short_name = col_name[:8] if len(col_name) > 8 else col_name
-        header_surf = self.fonts['status'].render(f"{icon} {short_name}", True, C['text_bright'])
-        self.screen.blit(header_surf, (x + 6, y + 5))
-        
-        # Count badge
-        count_surf = self.fonts['status'].render(str(len(cards)), True, C['text_bright'])
-        self.screen.blit(count_surf, (x + w - 18, y + 5))
-        
-        # Body
-        body_y = y + 30
-        body_h = h - 34
-        pygame.draw.rect(self.screen, C['bg_item'], (x, body_y, w, body_h), border_radius=6)
-        
-        # Card dimensions
-        card_h = 48
-        card_spacing = 4
-        card_area_top = body_y + 4
-        card_area_bottom = body_y + body_h - 4
-        available_h = card_area_bottom - card_area_top
-        max_cards = available_h // (card_h + card_spacing)
-        
-        if not cards:
-            empty_surf = self.fonts['status'].render("—", True, C['text_muted'])
-            self.screen.blit(empty_surf, (x + w // 2 - 5, body_y + body_h // 2 - 8))
-            return
-        
-        # Ensure scroll is valid
-        if scroll > len(cards) - 1:
-            scroll = max(0, len(cards) - 1)
-            self.kanban_scroll[col_idx] = scroll
-        
-        # Draw visible cards
-        card_y = card_area_top
-        visible_cards = cards[scroll:scroll + max_cards]
-        
-        for j, card in enumerate(visible_cards):
-            actual_idx = scroll + j
-            is_card_sel = is_selected and actual_idx == self.kanban_card
-            
-            # Card background
-            card_bg = C['bg_item_hover'] if is_card_sel else C['bg']
-            pygame.draw.rect(self.screen, card_bg, (x + 3, card_y, w - 6, card_h), border_radius=5)
-            
-            # Selection border
-            if is_card_sel:
-                pygame.draw.rect(self.screen, C['accent'], (x + 3, card_y, w - 6, card_h), width=2, border_radius=5)
-            
-            # Priority bar
-            p_color = {'🔴': C['error'], '🟡': C['warning'], '🟢': C['success']}.get(card.get('priority', '🟡'), C['warning'])
-            pygame.draw.rect(self.screen, p_color, (x + 3, card_y, 4, card_h), border_radius=2)
-            
-            # Title
-            title = card.get('title', '?')
-            max_chars = (w - 20) // 7
-            if len(title) > max_chars:
-                title = title[:max_chars-1] + "…"
-            title_surf = self.fonts['status'].render(title, True, C['text_bright'])
-            self.screen.blit(title_surf, (x + 12, card_y + 8))
-            
-            # Due date on second line
-            due = card.get('due', '')
-            if due and due != 'TBD':
-                due_color = C['error'] if 'TODAY' in due.upper() else C['text_dim']
-                due_surf = self.fonts['status'].render(due[:12], True, due_color)
-                self.screen.blit(due_surf, (x + 12, card_y + 28))
-            
-            card_y += card_h + card_spacing
-        
-        # Scroll indicators
-        if scroll > 0:
-            up_surf = self.fonts['status'].render(f"▲{scroll}", True, C['warning'])
-            self.screen.blit(up_surf, (x + w - 24, body_y + 4))
-        
-        remaining = len(cards) - scroll - max_cards
-        if remaining > 0:
-            down_surf = self.fonts['status'].render(f"▼{remaining}", True, C['warning'])
-            self.screen.blit(down_surf, (x + w - 24, body_y + body_h - 14))
-    
-    def _draw_kanban_detail(self):
-        """Draw card detail popup"""
-        columns = list(self.kanban_data.keys())
-        cards = self.kanban_data.get(columns[self.kanban_col], [])
-        if not cards or self.kanban_card >= len(cards):
-            self.kanban_detail = False
-            return
-        
-        card = cards[self.kanban_card]
-        
-        # Overlay
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-        overlay.fill((0, 0, 0))
-        overlay.set_alpha(200)
-        self.screen.blit(overlay, (0, 0))
-        
-        # Popup
-        pw, ph = 500, 300
-        px, py = (SCREEN_WIDTH - pw) // 2, (SCREEN_HEIGHT - ph) // 2
-        pygame.draw.rect(self.screen, C['bg_overlay'], (px, py, pw, ph), border_radius=12)
-        pygame.draw.rect(self.screen, C['accent'], (px, py, pw, ph), width=2, border_radius=12)
-        
-        # Priority bar
-        p_color = {'🔴': C['error'], '🟡': C['warning'], '🟢': C['success']}.get(card.get('priority', '🟡'), C['warning'])
-        pygame.draw.rect(self.screen, p_color, (px, py, 8, ph), border_radius=6)
-        
-        # Title
-        title_surf = self.fonts['title'].render(card.get('title', 'Untitled')[:35], True, C['text_bright'])
-        self.screen.blit(title_surf, (px + 20, py + 15))
-        
-        # Details
-        details_y = py + 55
-        if card.get('due'):
-            due_surf = self.fonts['msg'].render(f"📅 Due: {card['due']}", True, C['text'])
-            self.screen.blit(due_surf, (px + 20, details_y))
-            details_y += 28
-        if card.get('context'):
-            ctx_surf = self.fonts['msg'].render(f"🏷️ {card['context']}", True, C['text_dim'])
-            self.screen.blit(ctx_surf, (px + 20, details_y))
-            details_y += 28
-        if card.get('description'):
-            desc_lines = [card['description'][i:i+50] for i in range(0, len(card['description']), 50)][:4]
-            for dl in desc_lines:
-                desc_surf = self.fonts['status'].render(dl, True, C['text'])
-                self.screen.blit(desc_surf, (px + 20, details_y))
-                details_y += 20
-        
-        # Close hint
-        close_surf = self.fonts['status'].render("Press Esc or Enter to close", True, C['text_muted'])
-        self.screen.blit(close_surf, (px + (pw - close_surf.get_width()) // 2, py + ph - 30))
-    
-    def _load_kanban_data(self):
-        """Parse kanban markdown file into structured data"""
-        import re
-        self.kanban_data = {
-            'Not Started': [], 'Research': [], 'Active': [], 
-            'Stuck': [], 'Review': [], 'Implement': [], 'Finished': []
-        }
-        
-        board_name = getattr(self, 'kanban_board', 'salon')
-        
-        # Fast Track: collect 🔥 items from both boards
-        if board_name == 'fasttrack':
-            self._load_fasttrack_data()
-            return
-        
-        # Select file based on current board
-        kanban_file = Path.home() / f'.openclaw/workspace/work/kanban/{board_name}.md'
-        if not kanban_file.exists():
-            return
-        
-        self._parse_kanban_file(kanban_file)
-    
-    def _load_fasttrack_data(self):
-        """Load Fast Track items from both salon and personal boards"""
-        import re
-        
-        for board in ['salon', 'personal']:
-            kanban_file = Path.home() / f'.openclaw/workspace/work/kanban/{board}.md'
-            if not kanban_file.exists():
-                continue
-            
-            try:
-                content = kanban_file.read_text()
-                in_fasttrack = False
-                current_column = None
-                current_card = None
-                
-                for line in content.split('\n'):
-                    # Detect Fast Track section
-                    if '## 🔥' in line or '## Fast Track' in line.replace(' ', ''):
-                        in_fasttrack = True
-                        continue
-                    
-                    # Exit fast track on next major section
-                    if in_fasttrack and line.startswith('## ') and '🔥' not in line:
-                        in_fasttrack = False
-                        current_card = None
-                        continue
-                    
-                    if not in_fasttrack:
-                        continue
-                    
-                    # Column headers in fast track
-                    if line.startswith('### '):
-                        col_name = line[4:].strip().replace(' (Urgent)', '')
-                        for known in self.kanban_data.keys():
-                            if known.lower() in col_name.lower():
-                                current_column = known
-                                break
-                        current_card = None
-                    
-                    # Card titles
-                    elif line.startswith('- **') or line.startswith('- '):
-                        title_match = re.match(r'-\s*\*?\*?(.+?)\*?\*?\s*(🔴|🟡|🟢)?$', line)
-                        if title_match and current_column:
-                            title = title_match.group(1).strip().strip('*')
-                            priority = title_match.group(2) or '🔴'  # Fast track defaults to high priority
-                            source = '🏪' if board == 'salon' else '👤'
-                            current_card = {'title': f"{source} {title}", 'priority': priority, 'due': '', 'context': board, 'description': ''}
-                            self.kanban_data[current_column].append(current_card)
-            except:
-                pass
-        
-        # Sort by priority
-        priority_order = {'🔴': 0, '🟡': 1, '🟢': 2}
-        for col in self.kanban_data:
-            self.kanban_data[col].sort(key=lambda c: priority_order.get(c.get('priority', '🟡'), 1))
-    
-    def _parse_kanban_file(self, kanban_file):
-        """Parse a single kanban file"""
-        import re
-        
-        try:
-            content = kanban_file.read_text()
-            current_column = None
-            current_card = None
-            in_description = False
-            
-            for line in content.split('\n'):
-                # Detect column headers (### Column Name)
-                if line.startswith('### ') and not line.startswith('### Idea') and not line.startswith('### Status') and not line.startswith('### Check') and not line.startswith('### Notes'):
-                    col_name = line[4:].strip()
-                    # Remove (Urgent) suffix
-                    col_name = col_name.replace(' (Urgent)', '')
-                    # Match to known columns
-                    for known in self.kanban_data.keys():
-                        if known.lower() in col_name.lower():
-                            current_column = known
-                            break
-                    current_card = None
-                    in_description = False
-                
-                # Detect card titles (## Title 🔴/🟡/🟢)
-                elif line.startswith('## ') and current_column and not line.startswith('## Main') and not line.startswith('## 💡') and not line.startswith('## 🔥') and not line.startswith('## Archive'):
-                    title_match = re.match(r'## (.+?)\s*(🔴|🟡|🟢)?$', line)
-                    if title_match:
-                        title = title_match.group(1).strip()
-                        priority = title_match.group(2) or '🟡'
-                        current_card = {'title': title, 'priority': priority, 'due': '', 'context': '', 'description': ''}
-                        self.kanban_data[current_column].append(current_card)
-                        in_description = False
-                
-                # Parse card metadata
-                elif current_card:
-                    if line.startswith('**Due:**'):
-                        due_match = re.search(r'\*\*Due:\*\*\s*([^|]+)', line)
-                        if due_match:
-                            current_card['due'] = due_match.group(1).strip()
-                        ctx_match = re.search(r'\*\*Context:\*\*\s*([^*\n]+)', line)
-                        if ctx_match:
-                            current_card['context'] = ctx_match.group(1).strip()
-                    # Capture description (line after metadata, before ### Status)
-                    elif line.strip() and not line.startswith('**') and not line.startswith('#') and not line.startswith('-') and not line.startswith('<!--'):
-                        if not current_card['description']:
-                            current_card['description'] = line.strip()
-            
-            # Sort cards by priority (🔴 > 🟡 > 🟢)
-            priority_order = {'🔴': 0, '🟡': 1, '🟢': 2}
-            for col in self.kanban_data:
-                self.kanban_data[col].sort(key=lambda c: priority_order.get(c.get('priority', '🟡'), 1))
-                
-        except Exception as e:
-            pass  # Silently fail, show empty board
                 
     def draw_chat(self):
         """Draw chat panel"""
@@ -2367,7 +1394,7 @@ class DashboardApp:
         overlay.set_alpha(180)
         self.screen.blit(overlay, (0, 0))
         
-        menu_w, menu_h = 500, 380
+        menu_w, menu_h = 300, 240
         menu_x = (SCREEN_WIDTH - menu_w) // 2
         menu_y = (SCREEN_HEIGHT - menu_h) // 2
         
@@ -2415,7 +1442,7 @@ class DashboardApp:
             items.append({'type': 'archived', 'name': f'📦 View Archived ({archived_count})'})
         
         # Scrolling
-        max_visible = 9
+        max_visible = 6
         total_items = len(items)
         
         # Ensure selection stays in bounds
@@ -2442,15 +1469,15 @@ class DashboardApp:
                              item['key'].endswith(':' + self.settings.session_key))
             
             if is_sel:
-                pygame.draw.rect(self.screen, C['bg_item_hover'], (menu_x + 10, item_y, menu_w - 20, 34), border_radius=6)
+                pygame.draw.rect(self.screen, C['bg_item_hover'], (menu_x + 8, item_y, menu_w - 16, 26), border_radius=4)
             
             prefix = "✓ " if is_current else "  "
             color = C['accent'] if is_current else (C['text_bright'] if is_sel else C['text'])
             
-            display_name = item['name'][:35]
-            surf = self.fonts['msg'].render(prefix + display_name, True, color)
-            self.screen.blit(surf, (menu_x + 16, item_y + 7))
-            item_y += 36
+            display_name = item['name'][:24]
+            surf = self.fonts['menu'].render(prefix + display_name, True, color)
+            self.screen.blit(surf, (menu_x + 12, item_y + 5))
+            item_y += 28
         
         # Scroll indicators
         if self.chat_menu_scroll > 0:
@@ -2585,8 +1612,6 @@ class DashboardApp:
             self.draw_chat()
         elif self.mode == MODE_COMMANDS:
             self.draw_commands()
-        elif self.mode == MODE_KANBAN:
-            self.draw_kanban()
             
         pygame.display.flip()
         
@@ -2609,9 +1634,6 @@ class DashboardApp:
         elif event.key == pygame.K_F4:
             self.switch_mode(MODE_COMMANDS)
             return
-        elif event.key == pygame.K_F5:
-            self.switch_mode(MODE_KANBAN)
-            return
                 
         # Ctrl+Q behavior
         if event.key == pygame.K_q and event.mod & pygame.KMOD_CTRL:
@@ -2628,8 +1650,6 @@ class DashboardApp:
             self._handle_commands_key(event)
         elif self.mode == MODE_TASKS:
             self._handle_tasks_key(event)
-        elif self.mode == MODE_KANBAN:
-            self._handle_kanban_key(event)
                 
     def _handle_chat_key(self, event):
         if self.chat_menu_open:
@@ -2875,24 +1895,16 @@ class DashboardApp:
         if self.task_editing:
             # Editing mode
             if event.key == pygame.K_RETURN:
-                # Save to Todoist
-                if self.task_edit_text.strip():
-                    task = self.tasks[self.task_selected] if self.tasks and 0 <= self.task_selected < len(self.tasks) else None
-                    if task and isinstance(task.get('id'), int):
-                        # New local task - add to Todoist
-                        self._todoist_add_task(self.task_edit_text.strip(), 'today')
-                    else:
-                        # Existing Todoist task - can't edit via CLI easily, just refresh
-                        self._load_todoist_tasks()
+                # Save edit
+                if self.tasks and 0 <= self.task_selected < len(self.tasks):
+                    self.tasks[self.task_selected]['content'] = self.task_edit_text
+                    self.save_local_tasks()
                 self.task_editing = False
             elif event.key == pygame.K_ESCAPE:
-                # Cancel edit - if new task, remove from local list
+                # Cancel edit - if empty, delete the task
                 if self.tasks and 0 <= self.task_selected < len(self.tasks):
-                    task = self.tasks[self.task_selected]
-                    if isinstance(task.get('id'), int):  # Local temp task
-                        self.tasks.pop(self.task_selected)
-                        if self.task_selected >= len(self.tasks) and self.tasks:
-                            self.task_selected = len(self.tasks) - 1
+                    if not self.task_edit_text.strip() and not self.tasks[self.task_selected].get('content'):
+                        self.delete_task()
                 self.task_editing = False
             elif event.key == pygame.K_BACKSPACE:
                 if self.task_edit_cursor > 0:
@@ -2926,67 +1938,16 @@ class DashboardApp:
                     if self.tasks:
                         self.task_selected = min(len(self.tasks) - 1, self.task_selected + 1)
             elif event.key == pygame.K_RETURN:
-                # Build display list to find actual task
-                display_list = []
-                task_expanded = getattr(self, 'task_expanded', set())
-                for task in self.tasks:
-                    display_list.append({'task': task, 'indent': 0})
-                    if task.get('subtasks') and task['id'] in task_expanded:
-                        for sub in task.get('subtasks', []):
-                            display_list.append({'task': sub, 'indent': 1})
-                
-                if display_list and 0 <= self.task_selected < len(display_list):
-                    item = display_list[self.task_selected]
-                    task = item['task']
-                    # If task has subtasks, toggle expand
-                    if task.get('subtasks') and item['indent'] == 0:
-                        if task['id'] in self.task_expanded:
-                            self.task_expanded.discard(task['id'])
-                        else:
-                            self.task_expanded.add(task['id'])
-                    else:
-                        # Edit mode
-                        self.task_editing = True
-                        self.task_edit_text = task.get('content', '')
-                        self.task_edit_cursor = len(self.task_edit_text)
+                if self.tasks and 0 <= self.task_selected < len(self.tasks):
+                    self.task_editing = True
+                    self.task_edit_text = self.tasks[self.task_selected].get('content', '')
+                    self.task_edit_cursor = len(self.task_edit_text)
             elif event.key == pygame.K_n:
                 self.add_task()
             elif event.key == pygame.K_SPACE:
                 self.toggle_task_done()
             elif event.key == pygame.K_p:
                 self.cycle_task_priority()
-            elif event.key == pygame.K_r:
-                # Manual refresh
-                self._load_todoist_tasks()
-            elif event.key == pygame.K_TAB:
-                # Cycle filter through all 5 options
-                filters = ['all', 'inbox', 'salon', 'today', 'overdue']
-                current = getattr(self, 'task_filter', 'all')
-                idx = filters.index(current) if current in filters else 0
-                self.task_filter = filters[(idx + 1) % len(filters)]
-                self.task_selected = 0
-                self.task_scroll = 0
-            # Number keys for project filter (WOW edition)
-            elif event.key == pygame.K_1:
-                self.task_filter = 'all'
-                self.task_selected = 0
-                self.task_scroll = 0
-            elif event.key == pygame.K_2:
-                self.task_filter = 'inbox'
-                self.task_selected = 0
-                self.task_scroll = 0
-            elif event.key == pygame.K_3:
-                self.task_filter = 'salon'
-                self.task_selected = 0
-                self.task_scroll = 0
-            elif event.key == pygame.K_4:
-                self.task_filter = 'today'
-                self.task_selected = 0
-                self.task_scroll = 0
-            elif event.key == pygame.K_5:
-                self.task_filter = 'overdue'
-                self.task_selected = 0
-                self.task_scroll = 0
             elif event.key in (pygame.K_DELETE, pygame.K_BACKSPACE):
                 self.delete_task()
                 
@@ -3003,239 +1964,23 @@ class DashboardApp:
         if self.command_result is not None:
             self.command_result = None
             return
-        
-        num_commands = len(self.get_commands())
-        
-        # Number keys 1-8 for quick activation
-        number_keys = {
-            pygame.K_1: 0, pygame.K_2: 1, pygame.K_3: 2, pygame.K_4: 3,
-            pygame.K_5: 4, pygame.K_6: 5, pygame.K_7: 6, pygame.K_8: 7,
-            pygame.K_KP1: 0, pygame.K_KP2: 1, pygame.K_KP3: 2, pygame.K_KP4: 3,
-            pygame.K_KP5: 4, pygame.K_KP6: 5, pygame.K_KP7: 6, pygame.K_KP8: 7,
-        }
-        
-        if event.key in number_keys:
-            cmd_idx = number_keys[event.key]
-            if cmd_idx < num_commands:
-                self.command_selection = cmd_idx
-                self.execute_command(cmd_idx)
-            return
             
-        # Arrow key navigation (2x4 grid)
+        # Arrow key navigation (3x3 grid)
+        num_commands = len(self.get_commands())
         if event.key == pygame.K_UP:
-            if self.command_selection >= 2:
-                self.command_selection -= 2
+            if self.command_selection >= 3:
+                self.command_selection -= 3
         elif event.key == pygame.K_DOWN:
-            if self.command_selection + 2 < num_commands:
-                self.command_selection += 2
+            if self.command_selection + 3 < num_commands:
+                self.command_selection += 3
         elif event.key == pygame.K_LEFT:
-            if self.command_selection % 2 > 0:
+            if self.command_selection % 3 > 0:
                 self.command_selection -= 1
         elif event.key == pygame.K_RIGHT:
-            if self.command_selection % 2 < 1 and self.command_selection < num_commands - 1:
+            if self.command_selection % 3 < 2 and self.command_selection < num_commands - 1:
                 self.command_selection += 1
         elif event.key == pygame.K_RETURN:
             self.execute_command(self.command_selection)
-    
-    def _handle_kanban_key(self, event):
-        """Handle keyboard input for kanban panel"""
-        all_columns = ['Not Started', 'Research', 'Active', 'Stuck', 'Review', 'Implement', 'Finished']
-        current_col = all_columns[self.kanban_col] if self.kanban_col < len(all_columns) else all_columns[0]
-        current_cards = self.kanban_data.get(current_col, [])
-        
-        # Initialize holding state
-        if not hasattr(self, 'kanban_holding'):
-            self.kanban_holding = None  # Card being held
-            self.kanban_holding_from = None  # Source column index
-        
-        # Close detail popup
-        if hasattr(self, 'kanban_detail') and self.kanban_detail:
-            if event.key in (pygame.K_ESCAPE, pygame.K_RETURN):
-                self.kanban_detail = False
-            return
-        
-        # Space = pick up or place card
-        if event.key == pygame.K_SPACE:
-            if self.kanban_holding:
-                # Place the card
-                self._place_kanban_card()
-            else:
-                # Pick up current card
-                if current_cards and self.kanban_card < len(current_cards):
-                    self.kanban_holding = current_cards[self.kanban_card]
-                    self.kanban_holding_from = self.kanban_col
-            return
-        
-        # Left/Right = move between columns 1-7
-        if event.key == pygame.K_LEFT:
-            if self.kanban_col > 0:
-                self.kanban_col -= 1
-                if not self.kanban_holding:
-                    self.kanban_card = 0
-                    self.kanban_scroll[self.kanban_col] = 0
-        elif event.key == pygame.K_RIGHT:
-            if self.kanban_col < 6:
-                self.kanban_col += 1
-                if not self.kanban_holding:
-                    self.kanban_card = 0
-                    self.kanban_scroll[self.kanban_col] = 0
-        
-        # Up/Down = scroll cards in current column (only if not holding)
-        elif event.key == pygame.K_UP:
-            if not self.kanban_holding and current_cards:
-                if self.kanban_card > 0:
-                    self.kanban_card -= 1
-                    # Scroll up if selection goes above visible area
-                    scroll = self.kanban_scroll.get(self.kanban_col, 0)
-                    if self.kanban_card < scroll:
-                        self.kanban_scroll[self.kanban_col] = self.kanban_card
-        elif event.key == pygame.K_DOWN:
-            if not self.kanban_holding and current_cards:
-                max_idx = len(current_cards) - 1
-                if self.kanban_card < max_idx:
-                    self.kanban_card += 1
-                    # Scroll down if selection goes below visible area
-                    # Row height ~180, body ~146, available ~138, card+space=52 → 2 visible
-                    scroll = self.kanban_scroll.get(self.kanban_col, 0)
-                    max_visible = 2
-                    if self.kanban_card > scroll + max_visible - 1:
-                        self.kanban_scroll[self.kanban_col] = self.kanban_card - max_visible + 1
-        
-        # Enter = detail popup
-        elif event.key == pygame.K_RETURN:
-            if not self.kanban_holding and current_cards:
-                self.kanban_detail = True
-        
-        # Tab = switch boards (salon → personal → fasttrack → salon)
-        elif event.key == pygame.K_TAB:
-            if not self.kanban_holding:
-                boards = ['salon', 'personal', 'fasttrack']
-                idx = boards.index(self.kanban_board) if self.kanban_board in boards else 0
-                self.kanban_board = boards[(idx + 1) % 3]
-                self._load_kanban_data()
-                self.kanban_col = 0
-                self.kanban_card = 0
-                self.kanban_scroll = {}
-        
-        # R = refresh
-        elif event.key == pygame.K_r:
-            if not self.kanban_holding:
-                self._load_kanban_data()
-                self.kanban_last_refresh = time.time()
-        
-        # Escape = cancel hold or go home
-        elif event.key == pygame.K_ESCAPE:
-            if self.kanban_holding:
-                self.kanban_holding = None
-                self.kanban_holding_from = None
-            else:
-                self.switch_mode(MODE_DASHBOARD)
-    
-    def _place_kanban_card(self):
-        """Place the held card in current column"""
-        import re
-        all_columns = ['Not Started', 'Research', 'Active', 'Stuck', 'Review', 'Implement', 'Finished']
-        
-        if not self.kanban_holding:
-            return
-        
-        # Show syncing status
-        self.kanban_sync_status = 'syncing'
-        self.kanban_sync_time = time.time()
-        
-        src_col = all_columns[self.kanban_holding_from]
-        dst_col = all_columns[self.kanban_col]
-        card = self.kanban_holding
-        
-        # Update in-memory
-        if card in self.kanban_data[src_col]:
-            self.kanban_data[src_col].remove(card)
-        self.kanban_data[dst_col].insert(0, card)
-        
-        # Update file
-        board_name = getattr(self, 'kanban_board', 'salon')
-        kanban_file = Path.home() / f'.openclaw/workspace/work/kanban/{board_name}.md'
-        
-        try:
-            content = kanban_file.read_text()
-            card_title = card.get('title', '')
-            
-            # Find card block
-            pattern = rf'(## {re.escape(card_title)}.*?(?=\n## |\n### |\Z))'
-            match = re.search(pattern, content, re.DOTALL)
-            
-            if match:
-                card_block = match.group(1)
-                content = content.replace(card_block, '', 1)
-                
-                # Find target column
-                dst_pattern = rf'(### {dst_col}.*?\n(?:<!--.*?-->\n)?)'
-                dst_match = re.search(dst_pattern, content)
-                if dst_match:
-                    insert_pos = dst_match.end()
-                    content = content[:insert_pos] + '\n' + card_block.strip() + '\n\n---\n' + content[insert_pos:]
-                    kanban_file.write_text(content)
-                    self.kanban_sync_status = 'live'
-                else:
-                    self.kanban_sync_status = 'error'
-            else:
-                self.kanban_sync_status = 'error'
-        except Exception as e:
-            self.kanban_sync_status = 'error'
-        
-        # Clear holding state
-        self.kanban_holding = None
-        self.kanban_holding_from = None
-        self.kanban_card = 0
-    
-    def _move_kanban_card(self, target_col_idx):
-        """Move current card to target column and save to file"""
-        import re
-        all_columns = ['Not Started', 'Research', 'Active', 'Stuck', 'Review', 'Implement', 'Finished']
-        src_col = all_columns[self.kanban_col]
-        dst_col = all_columns[target_col_idx]
-        
-        cards = self.kanban_data.get(src_col, [])
-        if not cards or self.kanban_card >= len(cards):
-            return
-        
-        card = cards[self.kanban_card]
-        
-        # Update in-memory data
-        self.kanban_data[src_col].remove(card)
-        self.kanban_data[dst_col].insert(0, card)
-        
-        # Update the markdown file
-        board_name = getattr(self, 'kanban_board', 'salon')
-        kanban_file = Path.home() / f'.openclaw/workspace/work/kanban/{board_name}.md'
-        
-        try:
-            content = kanban_file.read_text()
-            card_title = card.get('title', '')
-            
-            # Find the card block (## Title ... ---)
-            pattern = rf'(## {re.escape(card_title)}.*?(?=\n## |\n### |\Z))'
-            match = re.search(pattern, content, re.DOTALL)
-            
-            if match:
-                card_block = match.group(1)
-                # Remove from current location
-                content = content.replace(card_block, '', 1)
-                
-                # Find target column and insert
-                dst_pattern = rf'(### {dst_col}.*?\n(?:<!--.*?-->\n)?)'
-                dst_match = re.search(dst_pattern, content)
-                if dst_match:
-                    insert_pos = dst_match.end()
-                    content = content[:insert_pos] + '\n' + card_block.strip() + '\n\n---\n' + content[insert_pos:]
-                    kanban_file.write_text(content)
-        except Exception as e:
-            pass  # Silent fail, in-memory state still updated
-        
-        # Move selection to new column
-        self.kanban_col = target_col_idx
-        self.kanban_card = 0
-        self.kanban_moving = False
             
     def run(self):
         running = True

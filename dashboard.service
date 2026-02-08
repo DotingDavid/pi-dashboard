@@ -1,0 +1,15 @@
+[Unit]
+Description=Pi 400 Dashboard for Waveshare TFT
+After=graphical.target
+
+[Service]
+Type=simple
+Environment="DISPLAY=:0"
+ExecStart=/home/moltbot/.openclaw/workspace/dashboard/launch.sh
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

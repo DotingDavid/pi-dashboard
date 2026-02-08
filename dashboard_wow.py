@@ -1687,8 +1687,7 @@ class DashboardApp:
         self.screen.blit(confirm_text, (confirm_text_x, button_y + 6))
     
     def draw_kanban(self):
-        """WOW Kanban - All 7 columns visible, compact cards, animated"""
-        import math
+        """Draw native Kanban board - 2-row layout with auto-refresh"""
         
         # Auto-refresh every 5 seconds
         now = time.time()
@@ -1698,228 +1697,162 @@ class DashboardApp:
             self._load_kanban_data()
             self.kanban_last_refresh = now
         
-        # Animation timer
-        if not hasattr(self, 'kanban_anim'):
-            self.kanban_anim = 0
-        self.kanban_anim += 0.03
-        
         # Initialize state
         if not hasattr(self, 'kanban_col'):
             self.kanban_col = 0
             self.kanban_card = 0
             self.kanban_board = 'salon'
             self.kanban_detail = False
-            self.kanban_scroll = {}
-            self.kanban_sync_status = 'live'
+            self.kanban_scroll = {}  # Scroll offset per column
+            self.kanban_sync_status = 'live'  # live, syncing, error
             self.kanban_sync_time = 0
         
-        all_columns = ['Not Started', 'Research', 'Active', 'Stuck', 'Review', 'Implement', 'Finished']
+        # 2-row layout: top row and bottom row
+        top_cols = ['Not Started', 'Research', 'Active', 'Stuck']
+        bottom_cols = ['Review', 'Implement', 'Finished']
+        all_columns = top_cols + bottom_cols
+        
         col_colors = {
-            'Not Started': (120, 120, 160), 'Research': (80, 150, 220), 
-            'Active': (80, 190, 100), 'Stuck': (220, 80, 80),
-            'Review': (220, 170, 60), 'Implement': (150, 100, 200), 'Finished': (60, 170, 100)
+            'Not Started': (100, 100, 130), 'Research': (70, 130, 190), 
+            'Active': (70, 170, 90), 'Stuck': (190, 70, 70),
+            'Review': (190, 150, 50), 'Implement': (130, 90, 170), 'Finished': (50, 150, 90)
         }
-        col_short = {'Not Started': 'TODO', 'Research': 'RSRCH', 'Active': 'ACTV', 
-                     'Stuck': 'STUCK', 'Review': 'REVW', 'Implement': 'IMPL', 'Finished': 'DONE'}
+        col_icons = {'Not Started': '📋', 'Research': '🔍', 'Active': '⚡', 'Stuck': '🚧', 
+                     'Review': '👀', 'Implement': '🚀', 'Finished': '✅'}
         
-        # ═══════════════════════════════════════════════════════════════
-        # ANIMATED BACKGROUND
-        # ═══════════════════════════════════════════════════════════════
-        for y in range(36, SCREEN_HEIGHT):
-            progress = (y - 36) / (SCREEN_HEIGHT - 36)
-            wave = math.sin(self.kanban_anim * 0.3 + progress * 1.5) * 2
-            r = int(16 + wave)
-            g = int(18 + wave)
-            b = int(24 + progress * 6 + wave)
-            pygame.draw.line(self.screen, (max(0,min(255,r)), max(0,min(255,g)), max(0,min(255,b))), (0, y), (SCREEN_WIDTH, y))
+        # Header with board selector (3 tabs)
+        header_y = 42
+        salon_color = C['accent'] if self.kanban_board == 'salon' else C['text_dim']
+        personal_color = C['accent'] if self.kanban_board == 'personal' else C['text_dim']
+        fast_color = C['warning'] if self.kanban_board == 'fasttrack' else C['text_dim']
+        salon_surf = self.fonts['msg'].render("🏪 Salon", True, salon_color)
+        personal_surf = self.fonts['msg'].render("👤 Personal", True, personal_color)
+        fast_surf = self.fonts['msg'].render("🔥 Fast", True, fast_color)
+        self.screen.blit(salon_surf, (15, header_y))
+        self.screen.blit(personal_surf, (115, header_y))
+        self.screen.blit(fast_surf, (230, header_y))
         
-        # ═══════════════════════════════════════════════════════════════
-        # HEADER - Board tabs + sync
-        # ═══════════════════════════════════════════════════════════════
-        header_y = 44
-        
-        boards = [
-            ('salon', 'Salon', (100, 140, 220)),
-            ('personal', 'Personal', (140, 180, 140)),
-            ('fasttrack', 'Fast', (255, 100, 80))
-        ]
-        
-        tab_x = 12
-        for board_id, board_name, board_color in boards:
-            is_active = self.kanban_board == board_id
-            
-            if board_id == 'fasttrack':
-                # Fast track pulses
-                pulse = 0.7 + 0.3 * math.sin(self.kanban_anim * 4)
-                display_color = (int(board_color[0] * pulse), int(board_color[1] * pulse), int(board_color[2] * pulse)) if is_active else (100, 60, 60)
-            else:
-                display_color = board_color if is_active else (80, 85, 100)
-            
-            tab_surf = self.fonts['msg'].render(board_name, True, display_color)
-            self.screen.blit(tab_surf, (tab_x, header_y))
-            
-            if is_active:
-                pygame.draw.rect(self.screen, display_color, (tab_x, header_y + 20, tab_surf.get_width(), 2))
-            
-            tab_x += tab_surf.get_width() + 20
-        
-        # Sync indicator
+        # Sync status indicator
         sync_status = getattr(self, 'kanban_sync_status', 'live')
         sync_time = getattr(self, 'kanban_sync_time', 0)
+        
+        # Auto-clear syncing status after 1 second
         if sync_status == 'syncing' and time.time() - sync_time > 1:
             self.kanban_sync_status = 'live'
             sync_status = 'live'
         
-        sync_colors = {'live': (80, 200, 120), 'syncing': (220, 180, 60), 'error': (220, 80, 80)}
-        sync_texts = {'live': '●', 'syncing': '◐', 'error': '✗'}
-        sync_surf = self.fonts['msg'].render(sync_texts.get(sync_status, '●'), True, sync_colors.get(sync_status, (80, 200, 120)))
-        self.screen.blit(sync_surf, (SCREEN_WIDTH - 25, header_y))
+        if sync_status == 'live':
+            sync_color = C['success']
+            sync_text = "● Live"
+        elif sync_status == 'syncing':
+            sync_color = C['warning']
+            sync_text = "◐ Sync..."
+        else:  # error
+            sync_color = C['error']
+            sync_text = "✗ Error"
         
-        # ═══════════════════════════════════════════════════════════════
-        # COLUMNS - All 7 in one row
-        # ═══════════════════════════════════════════════════════════════
-        cols_y = header_y + 30
-        cols_h = SCREEN_HEIGHT - cols_y - 28
-        col_w = (SCREEN_WIDTH - 20) // 7
-        col_gap = 2
+        sync_surf = self.fonts['status'].render(sync_text, True, sync_color)
+        self.screen.blit(sync_surf, (SCREEN_WIDTH - 65, header_y + 4))
         
-        for col_idx, col_name in enumerate(all_columns):
-            col_x = 10 + col_idx * col_w
-            is_selected_col = col_idx == self.kanban_col
-            col_color = col_colors[col_name]
-            
-            # Column background
-            bg_color = (35, 38, 50) if is_selected_col else (25, 28, 38)
-            pygame.draw.rect(self.screen, bg_color, (col_x, cols_y, col_w - col_gap, cols_h), border_radius=8)
-            
-            # Selected column glow
-            if is_selected_col:
-                glow_intensity = 0.5 + 0.3 * math.sin(self.kanban_anim * 3)
-                glow_color = (int(col_color[0] * glow_intensity * 0.4), int(col_color[1] * glow_intensity * 0.4), int(col_color[2] * glow_intensity * 0.4))
-                pygame.draw.rect(self.screen, glow_color, (col_x - 2, cols_y - 2, col_w - col_gap + 4, cols_h + 4), border_radius=10, width=2)
-            
-            # Column header
-            header_h = 28
-            pygame.draw.rect(self.screen, col_color, (col_x, cols_y, col_w - col_gap, header_h), border_top_left_radius=8, border_top_right_radius=8)
-            
-            # Column name (short)
-            name_text = col_short[col_name]
-            name_surf = self.fonts['status'].render(name_text, True, (255, 255, 255))
-            self.screen.blit(name_surf, (col_x + 6, cols_y + 6))
-            
-            # Card count
-            cards = self._get_kanban_column_cards(col_name)
-            count_surf = self.fonts['status'].render(str(len(cards)), True, (255, 255, 255, 180))
-            self.screen.blit(count_surf, (col_x + col_w - col_gap - count_surf.get_width() - 8, cols_y + 6))
-            
-            # Cards area
-            cards_y = cols_y + header_h + 4
-            card_h = 32
-            card_gap = 3
-            max_visible = (cols_h - header_h - 10) // (card_h + card_gap)
-            
-            scroll = self.kanban_scroll.get(col_idx, 0)
-            visible_cards = cards[scroll:scroll + max_visible]
-            
-            for card_idx, card in enumerate(visible_cards):
-                actual_idx = scroll + card_idx
-                is_selected_card = is_selected_col and actual_idx == self.kanban_card
-                card_y = cards_y + card_idx * (card_h + card_gap)
-                
-                # Check if fast track
-                is_fast = '🔥' in card.get('title', '') or card.get('fast_track', False)
-                
-                # Card background
-                if is_selected_card:
-                    # Selected card glow
-                    pulse = 0.7 + 0.3 * math.sin(self.kanban_anim * 4)
-                    card_bg = (int(60 * pulse), int(65 * pulse), int(85 * pulse))
-                    pygame.draw.rect(self.screen, col_color, (col_x + 3, card_y, col_w - col_gap - 6, card_h), border_radius=6, width=2)
-                elif is_fast:
-                    # Fast track items glow red
-                    pulse = 0.6 + 0.4 * math.sin(self.kanban_anim * 5)
-                    card_bg = (int(60 * pulse), int(30 * pulse), int(30 * pulse))
-                else:
-                    card_bg = (40, 43, 55)
-                
-                pygame.draw.rect(self.screen, card_bg, (col_x + 4, card_y, col_w - col_gap - 8, card_h), border_radius=5)
-                
-                # Fast track fire icon
-                text_x = col_x + 8
-                if is_fast:
-                    fire_color = (255, int(100 + 50 * math.sin(self.kanban_anim * 6)), 50)
-                    fire_surf = self.fonts['status'].render('🔥', True, fire_color)
-                    self.screen.blit(fire_surf, (text_x, card_y + 8))
-                    text_x += 16
-                
-                # Card title (truncated)
-                title = card.get('title', 'Untitled')
-                # Remove emoji prefixes for display
-                title = title.lstrip('🔥').strip()
-                max_chars = 10 if is_fast else 12
-                display_title = title[:max_chars] + ('…' if len(title) > max_chars else '')
-                title_color = (230, 235, 250) if is_selected_card else (170, 175, 190)
-                title_surf = self.fonts['status'].render(display_title, True, title_color)
-                self.screen.blit(title_surf, (text_x, card_y + 9))
-                
-                # Priority dot
-                priority = card.get('priority', 'green')
-                p_colors = {'red': (220, 70, 70), 'yellow': (220, 180, 50), 'green': (70, 180, 100)}
-                p_color = p_colors.get(priority, p_colors['green'])
-                pygame.draw.circle(self.screen, p_color, (col_x + col_w - col_gap - 14, card_y + card_h // 2), 4)
-            
-            # Scroll indicators
-            if scroll > 0:
-                pygame.draw.polygon(self.screen, (100, 105, 130), [
-                    (col_x + col_w // 2 - 6, cards_y - 2),
-                    (col_x + col_w // 2 + 6, cards_y - 2),
-                    (col_x + col_w // 2, cards_y - 8)
-                ])
-            if len(cards) > scroll + max_visible:
-                arrow_y = cols_y + cols_h - 8
-                pygame.draw.polygon(self.screen, (100, 105, 130), [
-                    (col_x + col_w // 2 - 6, arrow_y),
-                    (col_x + col_w // 2 + 6, arrow_y),
-                    (col_x + col_w // 2, arrow_y + 6)
-                ])
+        # Layout dimensions
+        row_h = 185
+        top_y = header_y + 28
+        bottom_y = top_y + row_h + 8
         
-        # ═══════════════════════════════════════════════════════════════
-        # DETAIL POPUP
-        # ═══════════════════════════════════════════════════════════════
+        # Draw top row (4 columns)
+        top_col_w = (SCREEN_WIDTH - 25) // 4
+        for i, col_name in enumerate(top_cols):
+            x = 10 + i * top_col_w
+            col_idx = i
+            self._draw_kanban_column(x, top_y, top_col_w - 5, row_h, col_name, col_idx, col_colors, col_icons)
+        
+        # Draw bottom row (3 columns, centered)
+        bottom_col_w = (SCREEN_WIDTH - 40) // 3
+        bottom_start_x = 20
+        for i, col_name in enumerate(bottom_cols):
+            x = bottom_start_x + i * bottom_col_w
+            col_idx = len(top_cols) + i
+            self._draw_kanban_column(x, bottom_y, bottom_col_w - 8, row_h, col_name, col_idx, col_colors, col_icons)
+        
+        # Detail popup
         if self.kanban_detail:
             self._draw_kanban_detail()
         
         # Floating card when holding
         if hasattr(self, 'kanban_holding') and self.kanban_holding:
-            # Draw ghost card at cursor column
-            ghost_col = self.kanban_col
-            ghost_x = 10 + ghost_col * col_w
-            ghost_y = cols_y + 40
+            self._draw_floating_card(top_cols, bottom_cols, top_col_w, bottom_col_w, top_y, bottom_y, header_y, bottom_start_x)
             
-            pulse = 0.7 + 0.3 * math.sin(self.kanban_anim * 5)
-            pygame.draw.rect(self.screen, (int(100 * pulse), int(140 * pulse), int(220 * pulse)), 
-                           (ghost_x + 4, ghost_y, col_w - col_gap - 8, 32), border_radius=5, width=2)
-            
-            title = self.kanban_holding.get('title', 'Moving...')[:12]
-            title_surf = self.fonts['status'].render(title, True, (200, 210, 240))
-            self.screen.blit(title_surf, (ghost_x + 10, ghost_y + 8))
-        
-        # ═══════════════════════════════════════════════════════════════
-        # FOOTER
-        # ═══════════════════════════════════════════════════════════════
-        if hasattr(self, 'kanban_holding') and self.kanban_holding:
-            hint = "←→ Move  •  Space Place  •  Esc Cancel"
-            hint_color = (220, 180, 80)
+            # Footer with holding hint
+            hint = "←→:Move card | Space:Place | Esc:Cancel"
+            hint_surf = self.fonts['msg'].render(hint, True, C['warning'])
+            self.screen.blit(hint_surf, ((SCREEN_WIDTH - hint_surf.get_width()) // 2, SCREEN_HEIGHT - 18))
         else:
-            hint = "←→ Column  •  ↑↓ Card  •  Space Grab  •  Enter Detail  •  Tab Board"
-            hint_color = (90, 95, 115)
-        hint_surf = self.fonts['status'].render(hint, True, hint_color)
-        self.screen.blit(hint_surf, ((SCREEN_WIDTH - hint_surf.get_width())//2, SCREEN_HEIGHT - 18))
-
-
-    def _get_kanban_column_cards(self, col_name):
-        """Get cards for a column"""
-        return self.kanban_data.get(col_name, [])
+            # Normal footer
+            hint = "←→:Columns | ↑↓:Cards | Space:Pick | Enter:Detail | Tab:Board"
+            hint_surf = self.fonts['status'].render(hint, True, C['text_muted'])
+            self.screen.blit(hint_surf, ((SCREEN_WIDTH - hint_surf.get_width()) // 2, SCREEN_HEIGHT - 18))
+    
+    def _draw_floating_card(self, top_cols, bottom_cols, top_col_w, bottom_col_w, top_y, bottom_y, header_y, bottom_start_x):
+        """Draw the card being held as floating above the board"""
+        card = self.kanban_holding
+        if not card:
+            return
+        
+        # Calculate position based on current column
+        if self.kanban_col < 4:
+            # Top row
+            x = 10 + self.kanban_col * top_col_w + top_col_w // 2 - 80
+            y = top_y + 50
+        else:
+            # Bottom row
+            col_in_row = self.kanban_col - 4
+            x = bottom_start_x + col_in_row * bottom_col_w + bottom_col_w // 2 - 80
+            y = bottom_y + 50
+        
+        # Floating card dimensions
+        card_w = 160
+        card_h = 70
+        
+        # Shadow
+        shadow_offset = 6
+        pygame.draw.rect(self.screen, (0, 0, 0), (x + shadow_offset, y + shadow_offset, card_w, card_h), border_radius=10)
+        
+        # Card background with glow
+        glow_color = C['warning']
+        pygame.draw.rect(self.screen, glow_color, (x - 3, y - 3, card_w + 6, card_h + 6), border_radius=12)
+        pygame.draw.rect(self.screen, C['bg_item_hover'], (x, y, card_w, card_h), border_radius=10)
+        
+        # Priority bar
+        p_color = {'🔴': C['error'], '🟡': C['warning'], '🟢': C['success']}.get(card.get('priority', '🟡'), C['warning'])
+        pygame.draw.rect(self.screen, p_color, (x, y, 6, card_h), border_radius=4)
+        
+        # Title
+        title = card.get('title', 'Untitled')
+        if len(title) > 18:
+            title = title[:17] + "…"
+        title_surf = self.fonts['msg'].render(title, True, C['text_bright'])
+        self.screen.blit(title_surf, (x + 14, y + 12))
+        
+        # Due date
+        due = card.get('due', '')
+        if due and due != 'TBD':
+            due_surf = self.fonts['status'].render(f"📅 {due[:12]}", True, C['text_dim'])
+            self.screen.blit(due_surf, (x + 14, y + 40))
+        
+        # "Drop here" indicator on target column
+        all_columns = ['Not Started', 'Research', 'Active', 'Stuck', 'Review', 'Implement', 'Finished']
+        target_col = all_columns[self.kanban_col]
+        
+        # Pulsing border on target column (using time for animation)
+        pulse = int((time.time() * 4) % 2)
+        if pulse:
+            if self.kanban_col < 4:
+                tx = 10 + self.kanban_col * top_col_w
+                pygame.draw.rect(self.screen, C['warning'], (tx - 2, top_y - 2, top_col_w - 1, 190), width=3, border_radius=10)
+            else:
+                col_in_row = self.kanban_col - 4
+                tx = bottom_start_x + col_in_row * bottom_col_w
+                pygame.draw.rect(self.screen, C['warning'], (tx - 2, bottom_y - 2, bottom_col_w - 4, 190), width=3, border_radius=10)
     
     def _draw_kanban_column(self, x, y, w, h, col_name, col_idx, col_colors, col_icons):
         """Draw a single kanban column with scroll support"""

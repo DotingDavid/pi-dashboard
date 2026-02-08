@@ -3314,7 +3314,7 @@ class DashboardApp:
         # Destination is current column (stay in same column if moving to/from FT)
         dst_col = all_columns[self.kanban_col] if not moving_to_fasttrack else src_col
         
-        # Determine if we're adding/removing fast track status
+        # Determine if we're toggling fast track status
         old_title = card.get('title', '')
         was_fasttrack = '🔥' in old_title
         
@@ -3329,13 +3329,6 @@ class DashboardApp:
         else:
             new_title = old_title
         
-        # Update in-memory
-        if card in self.kanban_data.get(src_col, []):
-            self.kanban_data[src_col].remove(card)
-        if dst_col not in self.kanban_data:
-            self.kanban_data[dst_col] = []
-        self.kanban_data[dst_col].insert(0, card)
-        
         # Update file
         board_name = getattr(self, 'kanban_board', 'salon')
         kanban_file = Path.home() / f'.openclaw/workspace/work/kanban/{board_name}.md'
@@ -3343,31 +3336,50 @@ class DashboardApp:
         try:
             content = kanban_file.read_text()
             
-            # Find card block using old title
-            pattern = rf'(## {re.escape(old_title)}.*?(?=\n## |\n### |\Z))'
-            match = re.search(pattern, content, re.DOTALL)
-            
-            if match:
-                card_block = match.group(1)
+            # Just toggling fast track? Update title in place
+            if src_col == dst_col and new_title != old_title:
+                content = content.replace(f'## {old_title}', f'## {new_title}', 1)
+                kanban_file.write_text(content)
+                self.kanban_sync_status = 'live'
+            elif src_col != dst_col:
+                # Actually moving between columns
+                pattern = rf'(## {re.escape(old_title)}.*?(?=\n## |\n### |\Z))'
+                match = re.search(pattern, content, re.DOTALL)
                 
-                # Update title in block if changed
-                if new_title != old_title:
-                    card_block = card_block.replace(f'## {old_title}', f'## {new_title}', 1)
-                
-                content = content.replace(match.group(1), '', 1)
-                
-                # Find target column
-                dst_pattern = rf'(### {dst_col}.*?\n(?:<!--.*?-->\n)?)'
-                dst_match = re.search(dst_pattern, content)
-                if dst_match:
-                    insert_pos = dst_match.end()
-                    content = content[:insert_pos] + '\n' + card_block.strip() + '\n\n---\n' + content[insert_pos:]
-                    kanban_file.write_text(content)
-                    self.kanban_sync_status = 'live'
+                if match:
+                    card_block = match.group(1).strip()
+                    
+                    # Update title if changed
+                    if new_title != old_title:
+                        card_block = card_block.replace(f'## {old_title}', f'## {new_title}', 1)
+                    
+                    # Remove from old location
+                    content = content.replace(match.group(1), '', 1)
+                    # Clean up multiple separators
+                    content = re.sub(r'(---\s*\n){2,}', '---\n\n', content)
+                    
+                    # Find target column and insert
+                    dst_pattern = rf'(### {dst_col}.*?\n(?:<!--.*?-->\n)?)'
+                    dst_match = re.search(dst_pattern, content)
+                    if dst_match:
+                        insert_pos = dst_match.end()
+                        content = content[:insert_pos] + '\n' + card_block + '\n\n---\n\n' + content[insert_pos:]
+                        kanban_file.write_text(content)
+                        self.kanban_sync_status = 'live'
+                        
+                        # Update in-memory
+                        if card in self.kanban_data.get(src_col, []):
+                            self.kanban_data[src_col].remove(card)
+                        if dst_col not in self.kanban_data:
+                            self.kanban_data[dst_col] = []
+                        self.kanban_data[dst_col].insert(0, card)
+                    else:
+                        self.kanban_sync_status = 'error'
                 else:
                     self.kanban_sync_status = 'error'
             else:
-                self.kanban_sync_status = 'error'
+                # No change needed
+                self.kanban_sync_status = 'live'
         except Exception as e:
             self.kanban_sync_status = 'error'
         

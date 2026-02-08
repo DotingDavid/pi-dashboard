@@ -1687,7 +1687,7 @@ class DashboardApp:
         self.screen.blit(confirm_text, (confirm_text_x, button_y + 6))
     
     def draw_kanban(self):
-        """WOW Kanban v2 - Professional, polished, impressive"""
+        """WOW Kanban v3 - Fast Track row at top, columns below"""
         import math
         
         # Auto-refresh every 5 seconds
@@ -1712,6 +1712,8 @@ class DashboardApp:
             self.kanban_scroll = {}
             self.kanban_sync_status = 'live'
             self.kanban_sync_time = 0
+            self.kanban_in_fasttrack = False  # Are we in fast track row?
+            self.kanban_ft_card = 0  # Selected card in fast track
         
         all_columns = ['Not Started', 'Research', 'Active', 'Stuck', 'Review', 'Implement', 'Finished']
         col_colors = {
@@ -1723,7 +1725,7 @@ class DashboardApp:
                      'Review': '◐', 'Implement': '▸', 'Finished': '✓'}
         
         # ═══════════════════════════════════════════════════════════════
-        # BACKGROUND - Subtle gradient
+        # BACKGROUND
         # ═══════════════════════════════════════════════════════════════
         for y in range(36, SCREEN_HEIGHT):
             progress = (y - 36) / (SCREEN_HEIGHT - 36)
@@ -1733,38 +1735,32 @@ class DashboardApp:
             pygame.draw.line(self.screen, (r, g, b), (0, y), (SCREEN_WIDTH, y))
         
         # ═══════════════════════════════════════════════════════════════
-        # HEADER - Board tabs with breathing room
+        # HEADER - Just Salon/Personal tabs (Fast Track is always visible)
         # ═══════════════════════════════════════════════════════════════
-        header_y = 46
-        header_h = 34
+        header_y = 44
+        header_h = 28
         
-        # Glass header bar - taller
+        # Glass header bar
         header_surf = pygame.Surface((SCREEN_WIDTH - 20, header_h), pygame.SRCALPHA)
         header_surf.fill((30, 32, 45, 180))
-        self.screen.blit(header_surf, (10, header_y - 6))
-        pygame.draw.rect(self.screen, (50, 55, 70), (10, header_y - 6, SCREEN_WIDTH - 20, header_h), width=1, border_radius=8)
+        self.screen.blit(header_surf, (10, header_y - 4))
+        pygame.draw.rect(self.screen, (50, 55, 70), (10, header_y - 4, SCREEN_WIDTH - 20, header_h), width=1, border_radius=6)
         
         boards = [
             ('salon', 'Salon', (100, 150, 220)),
             ('personal', 'Personal', (120, 180, 120)),
-            ('fasttrack', 'Fast Track', (255, 90, 70))
         ]
         
         tab_x = 20
         for board_id, board_name, board_color in boards:
             is_active = self.kanban_board == board_id
-            
-            if board_id == 'fasttrack' and is_active:
-                pulse = 0.8 + 0.2 * math.sin(self.kanban_anim * 4)
-                display_color = (int(255 * pulse), int(90 * pulse), int(70 * pulse))
-            else:
-                display_color = board_color if is_active else (90, 95, 115)
+            display_color = board_color if is_active else (90, 95, 115)
             
             tab_surf = self.fonts['msg'].render(board_name, True, display_color)
-            self.screen.blit(tab_surf, (tab_x, header_y + 4))
+            self.screen.blit(tab_surf, (tab_x, header_y + 2))
             
             if is_active:
-                pygame.draw.rect(self.screen, display_color, (tab_x, header_y + 22, tab_surf.get_width(), 2), border_radius=1)
+                pygame.draw.rect(self.screen, display_color, (tab_x, header_y + 18, tab_surf.get_width(), 2), border_radius=1)
             
             tab_x += tab_surf.get_width() + 25
         
@@ -1776,35 +1772,97 @@ class DashboardApp:
             sync_status = 'live'
         
         sync_colors = {'live': (80, 200, 120), 'syncing': (220, 180, 60), 'error': (220, 80, 80)}
-        sync_texts = {'live': '● Synced', 'syncing': '◐ Sync...', 'error': '✗ Error'}
+        sync_texts = {'live': '●', 'syncing': '◐', 'error': '✗'}
         sync_surf = self.fonts['status'].render(sync_texts.get(sync_status, '●'), True, sync_colors.get(sync_status, (80, 200, 120)))
-        self.screen.blit(sync_surf, (SCREEN_WIDTH - sync_surf.get_width() - 20, header_y + 4))
+        self.screen.blit(sync_surf, (SCREEN_WIDTH - 25, header_y + 4))
         
         # ═══════════════════════════════════════════════════════════════
-        # COLUMNS - 6 normal + 1 narrow Finished column
+        # FAST TRACK ROW - Always visible at top
         # ═══════════════════════════════════════════════════════════════
-        cols_y = header_y + header_h + 4
-        cols_h = SCREEN_HEIGHT - cols_y - 24
+        ft_y = header_y + header_h + 6
+        ft_h = 50
+        
+        # Collect all fast track items from current board
+        ft_cards = []
+        for col_name in all_columns:
+            for card in self._get_kanban_column_cards(col_name):
+                if '🔥' in card.get('title', '') or card.get('fast_track', False):
+                    card['_from_column'] = col_name
+                    ft_cards.append(card)
+        
+        # Fast track container with pulsing border
+        pulse = 0.6 + 0.4 * math.sin(self.kanban_anim * 3)
+        ft_border = (int(200 * pulse), int(60 * pulse), int(60 * pulse))
+        pygame.draw.rect(self.screen, (35, 25, 25), (10, ft_y, SCREEN_WIDTH - 20, ft_h), border_radius=8)
+        pygame.draw.rect(self.screen, ft_border, (10, ft_y, SCREEN_WIDTH - 20, ft_h), width=2, border_radius=8)
+        
+        # Fast track label
+        ft_label = self.fonts['status'].render('🔥 FAST TRACK', True, (255, 100, 80))
+        self.screen.blit(ft_label, (18, ft_y + 4))
+        
+        # Fast track cards - horizontal layout
+        if ft_cards:
+            ft_card_w = 130
+            ft_card_h = 28
+            ft_cards_x = 18
+            ft_cards_y = ft_y + 20
+            max_ft_visible = (SCREEN_WIDTH - 40) // (ft_card_w + 6)
+            
+            for i, card in enumerate(ft_cards[:max_ft_visible]):
+                is_selected = self.kanban_in_fasttrack and i == self.kanban_ft_card
+                card_x = ft_cards_x + i * (ft_card_w + 6)
+                
+                # Card background
+                if is_selected:
+                    pygame.draw.rect(self.screen, (70, 45, 45), (card_x, ft_cards_y, ft_card_w, ft_card_h), border_radius=5)
+                    pygame.draw.rect(self.screen, (255, 100, 80), (card_x, ft_cards_y, ft_card_w, ft_card_h), border_radius=5, width=2)
+                else:
+                    pygame.draw.rect(self.screen, (50, 35, 35), (card_x, ft_cards_y, ft_card_w, ft_card_h), border_radius=5)
+                
+                # Fire icon
+                fire_pulse = 0.8 + 0.2 * math.sin(self.kanban_anim * 5 + i)
+                fire_surf = self.fonts['status'].render('🔥', True, (int(255 * fire_pulse), int(100 * fire_pulse), 50))
+                self.screen.blit(fire_surf, (card_x + 4, ft_cards_y + 7))
+                
+                # Title
+                title = card.get('title', '').lstrip('🔥').strip()[:14]
+                if len(card.get('title', '').lstrip('🔥').strip()) > 14:
+                    title += '…'
+                title_color = (255, 220, 200) if is_selected else (200, 160, 150)
+                title_surf = self.fonts['status'].render(title, True, title_color)
+                self.screen.blit(title_surf, (card_x + 18, ft_cards_y + 8))
+            
+            # Show count if more
+            if len(ft_cards) > max_ft_visible:
+                more_text = f"+{len(ft_cards) - max_ft_visible}"
+                more_surf = self.fonts['status'].render(more_text, True, (180, 100, 80))
+                self.screen.blit(more_surf, (SCREEN_WIDTH - 40, ft_cards_y + 8))
+        else:
+            # No fast track items
+            empty_surf = self.fonts['status'].render('No urgent items', True, (80, 60, 60))
+            self.screen.blit(empty_surf, (SCREEN_WIDTH // 2 - empty_surf.get_width() // 2, ft_y + 22))
+        
+        # ═══════════════════════════════════════════════════════════════
+        # COLUMNS - Below fast track
+        # ═══════════════════════════════════════════════════════════════
+        cols_y = ft_y + ft_h + 6
+        cols_h = SCREEN_HEIGHT - cols_y - 22
         col_gap = 3
         
-        # Finished column is half width, others share remaining space
+        # Finished column is narrow
         finished_w = 55
         normal_w = (SCREEN_WIDTH - 20 - finished_w) // 6
         
-        # Calculate column positions and widths
         col_positions = []
         current_x = 10
         for i, col_name in enumerate(all_columns):
-            if col_name == 'Finished':
-                w = finished_w
-            else:
-                w = normal_w
+            w = finished_w if col_name == 'Finished' else normal_w
             col_positions.append((current_x, w))
             current_x += w + col_gap
         
         for col_idx, col_name in enumerate(all_columns):
             col_x, col_w = col_positions[col_idx]
-            is_selected_col = col_idx == self.kanban_col
+            is_selected_col = (not self.kanban_in_fasttrack) and col_idx == self.kanban_col
             col_color = col_colors[col_name]
             cards = self._get_kanban_column_cards(col_name)
             is_finished = col_name == 'Finished'
@@ -1813,43 +1871,41 @@ class DashboardApp:
             if is_selected_col:
                 glow = 0.6 + 0.4 * math.sin(self.kanban_anim * 3)
                 glow_color = (int(col_color[0] * glow * 0.5), int(col_color[1] * glow * 0.5), int(col_color[2] * glow * 0.5))
-                pygame.draw.rect(self.screen, glow_color, (col_x - 2, cols_y - 2, col_w - col_gap + 4, cols_h + 4), border_radius=10, width=2)
+                pygame.draw.rect(self.screen, glow_color, (col_x - 2, cols_y - 2, col_w - col_gap + 4, cols_h + 4), border_radius=8, width=2)
             
             # Column background
             bg_color = (32, 35, 48) if is_selected_col else (24, 27, 38)
-            pygame.draw.rect(self.screen, bg_color, (col_x, cols_y, col_w - col_gap, cols_h), border_radius=8)
+            pygame.draw.rect(self.screen, bg_color, (col_x, cols_y, col_w - col_gap, cols_h), border_radius=6)
             
             # Column header
-            col_header_h = 28
-            pygame.draw.rect(self.screen, col_color, (col_x, cols_y, col_w - col_gap, col_header_h), border_top_left_radius=8, border_top_right_radius=8)
+            col_header_h = 24
+            pygame.draw.rect(self.screen, col_color, (col_x, cols_y, col_w - col_gap, col_header_h), border_top_left_radius=6, border_top_right_radius=6)
             
-            # Icon + Count (or just count for narrow Finished)
             if is_finished:
-                # Finished column - just show checkmark and count
                 count_text = f"✓{len(cards)}"
                 count_surf = self.fonts['status'].render(count_text, True, (255, 255, 255))
-                self.screen.blit(count_surf, (col_x + (col_w - col_gap) // 2 - count_surf.get_width() // 2, cols_y + 6))
+                self.screen.blit(count_surf, (col_x + (col_w - col_gap) // 2 - count_surf.get_width() // 2, cols_y + 4))
             else:
                 icon = col_icons[col_name]
-                icon_surf = self.fonts['msg'].render(icon, True, (255, 255, 255))
-                self.screen.blit(icon_surf, (col_x + 6, cols_y + 5))
+                icon_surf = self.fonts['status'].render(icon, True, (255, 255, 255))
+                self.screen.blit(icon_surf, (col_x + 5, cols_y + 4))
                 
-                count_surf = self.fonts['msg'].render(str(len(cards)), True, (255, 255, 255))
-                self.screen.blit(count_surf, (col_x + col_w - col_gap - count_surf.get_width() - 6, cols_y + 5))
+                count_surf = self.fonts['status'].render(str(len(cards)), True, (255, 255, 255))
+                self.screen.blit(count_surf, (col_x + col_w - col_gap - count_surf.get_width() - 5, cols_y + 4))
             
             # Cards
-            cards_y = cols_y + col_header_h + 3
-            card_h = 20 if is_finished else 44  # Finished cards are tiny
-            card_gap_inner = 2 if is_finished else 3
-            available_h = cols_h - col_header_h - 6
+            cards_y = cols_y + col_header_h + 2
+            card_h = 18 if is_finished else 38
+            card_gap_inner = 2
+            available_h = cols_h - col_header_h - 4
             max_visible = available_h // (card_h + card_gap_inner)
             
             scroll = self.kanban_scroll.get(col_idx, 0)
             visible_cards = cards[scroll:scroll + max_visible]
             
             if not cards:
-                empty_surf = self.fonts['status'].render("—", True, (50, 55, 70))
-                self.screen.blit(empty_surf, (col_x + (col_w - col_gap) // 2 - 4, cards_y + 20))
+                empty_surf = self.fonts['status'].render("—", True, (45, 50, 60))
+                self.screen.blit(empty_surf, (col_x + (col_w - col_gap) // 2 - 4, cards_y + 15))
             
             for card_idx, card in enumerate(visible_cards):
                 actual_idx = scroll + card_idx
@@ -1859,76 +1915,72 @@ class DashboardApp:
                 is_fast = '🔥' in card.get('title', '') or card.get('fast_track', False)
                 
                 if is_finished:
-                    # Finished column - minimal cards, just a checkmark
+                    # Minimal finished cards
                     if is_selected_card:
-                        pygame.draw.rect(self.screen, (50, 70, 55), (col_x + 2, card_y_pos, col_w - col_gap - 4, card_h), border_radius=4)
-                        pygame.draw.rect(self.screen, col_color, (col_x + 2, card_y_pos, col_w - col_gap - 4, card_h), border_radius=4, width=1)
+                        pygame.draw.rect(self.screen, (50, 70, 55), (col_x + 2, card_y_pos, col_w - col_gap - 4, card_h), border_radius=3)
+                        pygame.draw.rect(self.screen, col_color, (col_x + 2, card_y_pos, col_w - col_gap - 4, card_h), border_radius=3, width=1)
                     else:
-                        pygame.draw.rect(self.screen, (35, 50, 40), (col_x + 2, card_y_pos, col_w - col_gap - 4, card_h), border_radius=4)
+                        pygame.draw.rect(self.screen, (35, 48, 40), (col_x + 2, card_y_pos, col_w - col_gap - 4, card_h), border_radius=3)
                     
-                    # Just a checkmark
-                    check_color = (100, 200, 120) if is_selected_card else (70, 140, 90)
+                    check_color = (100, 200, 120) if is_selected_card else (60, 130, 80)
                     check_surf = self.fonts['status'].render('✓', True, check_color)
-                    self.screen.blit(check_surf, (col_x + (col_w - col_gap) // 2 - check_surf.get_width() // 2, card_y_pos + 3))
+                    self.screen.blit(check_surf, (col_x + (col_w - col_gap) // 2 - check_surf.get_width() // 2, card_y_pos + 2))
                 else:
-                    # Normal card rendering
+                    # Normal cards
                     if is_selected_card:
-                        pygame.draw.rect(self.screen, (55, 60, 80), (col_x + 3, card_y_pos, col_w - col_gap - 6, card_h), border_radius=5)
-                        pygame.draw.rect(self.screen, col_color, (col_x + 3, card_y_pos, col_w - col_gap - 6, card_h), border_radius=5, width=2)
+                        pygame.draw.rect(self.screen, (55, 60, 80), (col_x + 2, card_y_pos, col_w - col_gap - 4, card_h), border_radius=4)
+                        pygame.draw.rect(self.screen, col_color, (col_x + 2, card_y_pos, col_w - col_gap - 4, card_h), border_radius=4, width=2)
                     elif is_fast:
                         pulse = 0.7 + 0.3 * math.sin(self.kanban_anim * 5)
-                        pygame.draw.rect(self.screen, (int(55 * pulse), int(35 * pulse), int(35 * pulse)), (col_x + 3, card_y_pos, col_w - col_gap - 6, card_h), border_radius=5)
-                        pygame.draw.rect(self.screen, (180, 60, 60), (col_x + 3, card_y_pos, 3, card_h), border_top_left_radius=5, border_bottom_left_radius=5)
+                        pygame.draw.rect(self.screen, (int(50 * pulse), int(30 * pulse), int(30 * pulse)), (col_x + 2, card_y_pos, col_w - col_gap - 4, card_h), border_radius=4)
+                        pygame.draw.rect(self.screen, (160, 50, 50), (col_x + 2, card_y_pos, 3, card_h), border_top_left_radius=4, border_bottom_left_radius=4)
                     else:
-                        pygame.draw.rect(self.screen, (38, 42, 55), (col_x + 3, card_y_pos, col_w - col_gap - 6, card_h), border_radius=5)
+                        pygame.draw.rect(self.screen, (38, 42, 55), (col_x + 2, card_y_pos, col_w - col_gap - 4, card_h), border_radius=4)
                     
-                    # Priority bar on left (if not fast track)
+                    # Priority bar
                     priority = card.get('priority', 'green')
                     p_colors = {'red': (200, 60, 60), 'yellow': (200, 160, 40), 'green': (60, 160, 90)}
                     if not is_fast:
                         pygame.draw.rect(self.screen, p_colors.get(priority, p_colors['green']), 
-                                       (col_x + 3, card_y_pos, 3, card_h), border_top_left_radius=5, border_bottom_left_radius=5)
+                                       (col_x + 2, card_y_pos, 3, card_h), border_top_left_radius=4, border_bottom_left_radius=4)
                     
-                    # Card title - 2 lines with word wrap
+                    # Title - 2 lines
                     title = card.get('title', 'Untitled').lstrip('🔥').strip()
-                    text_x = col_x + 9
-                    text_y = card_y_pos + 5
+                    text_x = col_x + 8
+                    text_y = card_y_pos + 3
                     
-                    # Fire icon for fast track
                     if is_fast:
                         fire_pulse = 0.8 + 0.2 * math.sin(self.kanban_anim * 6 + card_idx)
-                        fire_surf = self.fonts['status'].render('🔥', True, (int(255 * fire_pulse), int(120 * fire_pulse), 50))
+                        fire_surf = self.fonts['status'].render('🔥', True, (int(255 * fire_pulse), int(100 * fire_pulse), 50))
                         self.screen.blit(fire_surf, (text_x, text_y))
                         text_x += 12
                     
-                    title_color = (235, 240, 255) if is_selected_card else (175, 180, 200)
-                    max_chars_per_line = 11
+                    title_color = (235, 240, 255) if is_selected_card else (170, 175, 195)
+                    max_chars = 11
                     
-                    # Line 1
-                    line1 = title[:max_chars_per_line]
+                    line1 = title[:max_chars]
                     line1_surf = self.fonts['status'].render(line1, True, title_color)
                     self.screen.blit(line1_surf, (text_x, text_y))
                     
-                    # Line 2 if needed
-                    if len(title) > max_chars_per_line:
-                        line2 = title[max_chars_per_line:max_chars_per_line*2]
-                        if len(title) > max_chars_per_line * 2:
+                    if len(title) > max_chars:
+                        line2 = title[max_chars:max_chars*2]
+                        if len(title) > max_chars * 2:
                             line2 = line2[:-1] + '…'
                         line2_surf = self.fonts['status'].render(line2, True, title_color)
-                        self.screen.blit(line2_surf, (col_x + 9, text_y + 14))
+                        self.screen.blit(line2_surf, (col_x + 8, text_y + 13))
             
             # Scroll indicators
             if scroll > 0:
-                pygame.draw.polygon(self.screen, (100, 110, 140), [
-                    (col_x + (col_w - col_gap) // 2, cards_y - 6),
-                    (col_x + (col_w - col_gap) // 2 - 6, cards_y - 1),
-                    (col_x + (col_w - col_gap) // 2 + 6, cards_y - 1)
+                pygame.draw.polygon(self.screen, (90, 100, 130), [
+                    (col_x + (col_w - col_gap) // 2, cards_y - 4),
+                    (col_x + (col_w - col_gap) // 2 - 5, cards_y),
+                    (col_x + (col_w - col_gap) // 2 + 5, cards_y)
                 ])
             if len(cards) > scroll + max_visible:
-                arrow_y = cols_y + cols_h - 6
-                pygame.draw.polygon(self.screen, (100, 110, 140), [
-                    (col_x + (col_w - col_gap) // 2 - 6, arrow_y - 5),
-                    (col_x + (col_w - col_gap) // 2 + 6, arrow_y - 5),
+                arrow_y = cols_y + cols_h - 4
+                pygame.draw.polygon(self.screen, (90, 100, 130), [
+                    (col_x + (col_w - col_gap) // 2 - 5, arrow_y - 4),
+                    (col_x + (col_w - col_gap) // 2 + 5, arrow_y - 4),
                     (col_x + (col_w - col_gap) // 2, arrow_y)
                 ])
         
@@ -1938,24 +1990,27 @@ class DashboardApp:
         
         # Floating card when holding
         if hasattr(self, 'kanban_holding') and self.kanban_holding:
-            ghost_x = 12 + self.kanban_col * col_w
-            ghost_y = cols_y + 50
+            ghost_x, ghost_w = col_positions[self.kanban_col]
+            ghost_y = cols_y + 40
             pulse = 0.7 + 0.3 * math.sin(self.kanban_anim * 5)
             pygame.draw.rect(self.screen, (int(80 * pulse), int(120 * pulse), int(200 * pulse)), 
-                           (ghost_x + 4, ghost_y, col_w - col_gap - 8, 34), border_radius=6, width=2)
+                           (ghost_x + 2, ghost_y, ghost_w - col_gap - 4, 32), border_radius=5, width=2)
             title = self.kanban_holding.get('title', '')[:10]
             title_surf = self.fonts['status'].render(title, True, (180, 200, 240))
-            self.screen.blit(title_surf, (ghost_x + 12, ghost_y + 9))
+            self.screen.blit(title_surf, (ghost_x + 10, ghost_y + 8))
         
         # Footer
         if hasattr(self, 'kanban_holding') and self.kanban_holding:
             hint = "←→ Move  •  Space Place  •  Esc Cancel"
             hint_color = (220, 180, 80)
+        elif self.kanban_in_fasttrack:
+            hint = "←→ Card  •  ↓ Columns  •  Space Grab  •  Enter Details"
+            hint_color = (255, 150, 120)
         else:
-            hint = "←→ Column  •  ↑↓ Card  •  Space Grab  •  Enter Details  •  Tab Board"
+            hint = "↑ Fast Track  •  ←→ Col  •  ↑↓ Card  •  Space Grab  •  Tab Board"
             hint_color = (90, 95, 115)
         hint_surf = self.fonts['status'].render(hint, True, hint_color)
-        self.screen.blit(hint_surf, ((SCREEN_WIDTH - hint_surf.get_width())//2, SCREEN_HEIGHT - 16))
+        self.screen.blit(hint_surf, ((SCREEN_WIDTH - hint_surf.get_width())//2, SCREEN_HEIGHT - 14))
 
     def _get_kanban_column_cards(self, col_name):
         """Get cards for a column"""
@@ -3078,15 +3133,25 @@ class DashboardApp:
             self.execute_command(self.command_selection)
     
     def _handle_kanban_key(self, event):
-        """Handle keyboard input for kanban panel"""
+        """Handle keyboard input for kanban panel with fast track row"""
         all_columns = ['Not Started', 'Research', 'Active', 'Stuck', 'Review', 'Implement', 'Finished']
         current_col = all_columns[self.kanban_col] if self.kanban_col < len(all_columns) else all_columns[0]
         current_cards = self.kanban_data.get(current_col, [])
         
-        # Initialize holding state
+        # Initialize state
         if not hasattr(self, 'kanban_holding'):
-            self.kanban_holding = None  # Card being held
-            self.kanban_holding_from = None  # Source column index
+            self.kanban_holding = None
+            self.kanban_holding_from = None
+        if not hasattr(self, 'kanban_in_fasttrack'):
+            self.kanban_in_fasttrack = False
+            self.kanban_ft_card = 0
+        
+        # Get fast track cards
+        ft_cards = []
+        for col_name in all_columns:
+            for card in self.kanban_data.get(col_name, []):
+                if '🔥' in card.get('title', '') or card.get('fast_track', False):
+                    ft_cards.append(card)
         
         # Close detail popup
         if hasattr(self, 'kanban_detail') and self.kanban_detail:
@@ -3097,65 +3162,81 @@ class DashboardApp:
         # Space = pick up or place card
         if event.key == pygame.K_SPACE:
             if self.kanban_holding:
-                # Place the card
                 self._place_kanban_card()
             else:
-                # Pick up current card
-                if current_cards and self.kanban_card < len(current_cards):
-                    self.kanban_holding = current_cards[self.kanban_card]
-                    self.kanban_holding_from = self.kanban_col
+                if self.kanban_in_fasttrack:
+                    # Pick up from fast track
+                    if ft_cards and self.kanban_ft_card < len(ft_cards):
+                        self.kanban_holding = ft_cards[self.kanban_ft_card]
+                        self.kanban_holding_from = -1  # Special: from fast track
+                else:
+                    if current_cards and self.kanban_card < len(current_cards):
+                        self.kanban_holding = current_cards[self.kanban_card]
+                        self.kanban_holding_from = self.kanban_col
             return
         
-        # Left/Right = move between columns 1-7
-        if event.key == pygame.K_LEFT:
-            if self.kanban_col > 0:
-                self.kanban_col -= 1
+        if self.kanban_in_fasttrack:
+            # Navigation in fast track row
+            if event.key == pygame.K_LEFT:
+                if self.kanban_ft_card > 0:
+                    self.kanban_ft_card -= 1
+            elif event.key == pygame.K_RIGHT:
+                if ft_cards and self.kanban_ft_card < len(ft_cards) - 1:
+                    self.kanban_ft_card += 1
+            elif event.key == pygame.K_DOWN:
+                # Exit fast track to columns
+                self.kanban_in_fasttrack = False
+                self.kanban_card = 0
+            elif event.key == pygame.K_RETURN:
+                if ft_cards and self.kanban_ft_card < len(ft_cards):
+                    self.kanban_detail = True
+        else:
+            # Navigation in columns
+            if event.key == pygame.K_LEFT:
+                if self.kanban_col > 0:
+                    self.kanban_col -= 1
+                    if not self.kanban_holding:
+                        self.kanban_card = 0
+                        self.kanban_scroll[self.kanban_col] = 0
+            elif event.key == pygame.K_RIGHT:
+                if self.kanban_col < 6:
+                    self.kanban_col += 1
+                    if not self.kanban_holding:
+                        self.kanban_card = 0
+                        self.kanban_scroll[self.kanban_col] = 0
+            elif event.key == pygame.K_UP:
                 if not self.kanban_holding:
-                    self.kanban_card = 0
-                    self.kanban_scroll[self.kanban_col] = 0
-        elif event.key == pygame.K_RIGHT:
-            if self.kanban_col < 6:
-                self.kanban_col += 1
-                if not self.kanban_holding:
-                    self.kanban_card = 0
-                    self.kanban_scroll[self.kanban_col] = 0
+                    if self.kanban_card > 0:
+                        self.kanban_card -= 1
+                        scroll = self.kanban_scroll.get(self.kanban_col, 0)
+                        if self.kanban_card < scroll:
+                            self.kanban_scroll[self.kanban_col] = self.kanban_card
+                    elif self.kanban_card == 0 and ft_cards:
+                        # Move to fast track
+                        self.kanban_in_fasttrack = True
+                        self.kanban_ft_card = 0
+            elif event.key == pygame.K_DOWN:
+                if not self.kanban_holding and current_cards:
+                    max_idx = len(current_cards) - 1
+                    if self.kanban_card < max_idx:
+                        self.kanban_card += 1
+                        scroll = self.kanban_scroll.get(self.kanban_col, 0)
+                        max_visible = 6
+                        if self.kanban_card > scroll + max_visible - 1:
+                            self.kanban_scroll[self.kanban_col] = self.kanban_card - max_visible + 1
+            elif event.key == pygame.K_RETURN:
+                if not self.kanban_holding and current_cards:
+                    self.kanban_detail = True
         
-        # Up/Down = scroll cards in current column (only if not holding)
-        elif event.key == pygame.K_UP:
-            if not self.kanban_holding and current_cards:
-                if self.kanban_card > 0:
-                    self.kanban_card -= 1
-                    # Scroll up if selection goes above visible area
-                    scroll = self.kanban_scroll.get(self.kanban_col, 0)
-                    if self.kanban_card < scroll:
-                        self.kanban_scroll[self.kanban_col] = self.kanban_card
-        elif event.key == pygame.K_DOWN:
-            if not self.kanban_holding and current_cards:
-                max_idx = len(current_cards) - 1
-                if self.kanban_card < max_idx:
-                    self.kanban_card += 1
-                    # Scroll down if selection goes below visible area
-                    # Row height ~180, body ~146, available ~138, card+space=52 → 2 visible
-                    scroll = self.kanban_scroll.get(self.kanban_col, 0)
-                    max_visible = 2
-                    if self.kanban_card > scroll + max_visible - 1:
-                        self.kanban_scroll[self.kanban_col] = self.kanban_card - max_visible + 1
-        
-        # Enter = detail popup
-        elif event.key == pygame.K_RETURN:
-            if not self.kanban_holding and current_cards:
-                self.kanban_detail = True
-        
-        # Tab = switch boards (salon → personal → fasttrack → salon)
-        elif event.key == pygame.K_TAB:
+        # Tab = switch boards (salon ↔ personal only, fast track is always visible)
+        if event.key == pygame.K_TAB:
             if not self.kanban_holding:
-                boards = ['salon', 'personal', 'fasttrack']
-                idx = boards.index(self.kanban_board) if self.kanban_board in boards else 0
-                self.kanban_board = boards[(idx + 1) % 3]
+                self.kanban_board = 'personal' if self.kanban_board == 'salon' else 'salon'
                 self._load_kanban_data()
                 self.kanban_col = 0
                 self.kanban_card = 0
                 self.kanban_scroll = {}
+                self.kanban_in_fasttrack = False
         
         # R = refresh
         elif event.key == pygame.K_r:

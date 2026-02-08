@@ -2017,19 +2017,195 @@ class DashboardApp:
             title_surf = self.fonts['status'].render(title, True, (180, 200, 240))
             self.screen.blit(title_surf, (ghost_x + 10, ghost_y + 8))
         
-        # Footer
+        # Preview bar - show selected card's description
+        preview_y = SCREEN_HEIGHT - 36
+        selected_card = None
+        if self.kanban_in_fasttrack and ft_cards:
+            if self.kanban_ft_card < len(ft_cards):
+                selected_card = ft_cards[self.kanban_ft_card]
+        else:
+            all_columns = ['Not Started', 'Research', 'Active', 'Stuck', 'Review', 'Implement', 'Finished']
+            if self.kanban_col < len(all_columns):
+                col_cards = self.kanban_data.get(all_columns[self.kanban_col], [])
+                if self.kanban_card < len(col_cards):
+                    selected_card = col_cards[self.kanban_card]
+        
+        if selected_card and not self.kanban_holding:
+            desc = selected_card.get('description', '')[:60]
+            if len(selected_card.get('description', '')) > 60:
+                desc += '…'
+            if desc:
+                pygame.draw.rect(self.screen, (30, 33, 45), (10, preview_y, SCREEN_WIDTH - 20, 18), border_radius=4)
+                desc_surf = self.fonts['status'].render(f"📝 {desc}", True, (140, 145, 165))
+                self.screen.blit(desc_surf, (16, preview_y + 2))
+        
+        # Search mode overlay
+        if getattr(self, 'kanban_search_mode', False):
+            self._draw_kanban_search()
+        
+        # Priority confirm dialog
+        if getattr(self, 'kanban_priority_confirm', False):
+            self._draw_priority_confirm()
+        
+        # New card form
+        if getattr(self, 'kanban_new_card_mode', False):
+            self._draw_new_card_form()
+        
+        # Footer hints
+        footer_y = SCREEN_HEIGHT - 14
         if hasattr(self, 'kanban_holding') and self.kanban_holding:
-            hint = "←→ Move  •  Space Place  •  Esc Cancel"
+            hint = "←→ Move  •  Space Drop  •  Esc Cancel"
             hint_color = (220, 180, 80)
         elif self.kanban_in_fasttrack:
-            hint = "←→ Card  •  ↓ Columns  •  Space Grab  •  Enter Details"
+            hint = "←→ Card  •  ↓ Cols  •  Space Grab  •  P Priority  •  / Search  •  N New"
             hint_color = (255, 150, 120)
         else:
-            hint = "↑ Fast Track  •  ←→ Col  •  ↑↓ Card  •  Space Grab  •  Tab Board"
+            hint = "Arrows Nav  •  Space Grab  •  P Priority  •  / Search  •  N New  •  Tab Board"
             hint_color = (90, 95, 115)
         hint_surf = self.fonts['status'].render(hint, True, hint_color)
-        self.screen.blit(hint_surf, ((SCREEN_WIDTH - hint_surf.get_width())//2, SCREEN_HEIGHT - 14))
+        self.screen.blit(hint_surf, ((SCREEN_WIDTH - hint_surf.get_width())//2, footer_y))
 
+    def _draw_kanban_search(self):
+        """Draw search overlay"""
+        # Dim background
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        self.screen.blit(overlay, (0, 0))
+        
+        # Search box
+        box_w, box_h = 400, 50
+        box_x = (SCREEN_WIDTH - box_w) // 2
+        box_y = 100
+        
+        pygame.draw.rect(self.screen, (40, 44, 60), (box_x, box_y, box_w, box_h), border_radius=8)
+        pygame.draw.rect(self.screen, (100, 140, 200), (box_x, box_y, box_w, box_h), width=2, border_radius=8)
+        
+        # Search icon and text
+        search_text = getattr(self, 'kanban_search_text', '')
+        prompt = f"🔍 {search_text}_" if search_text else "🔍 Type to search..."
+        text_surf = self.fonts['msg'].render(prompt, True, (200, 210, 230))
+        self.screen.blit(text_surf, (box_x + 15, box_y + 14))
+        
+        # Results
+        results = getattr(self, 'kanban_search_results', [])
+        result_y = box_y + box_h + 10
+        for i, card in enumerate(results[:5]):
+            is_selected = i == getattr(self, 'kanban_search_idx', 0)
+            bg_color = (60, 65, 85) if is_selected else (35, 38, 50)
+            pygame.draw.rect(self.screen, bg_color, (box_x, result_y, box_w, 30), border_radius=5)
+            
+            title = card.get('title', '')[:35]
+            col = card.get('_from_column', '')
+            text = f"{title} • {col}"
+            color = (230, 235, 250) if is_selected else (160, 165, 180)
+            text_surf = self.fonts['status'].render(text, True, color)
+            self.screen.blit(text_surf, (box_x + 10, result_y + 8))
+            result_y += 35
+        
+        # Hint
+        hint_surf = self.fonts['status'].render("↑↓ Select • Enter Go • Esc Cancel", True, (100, 105, 125))
+        self.screen.blit(hint_surf, ((SCREEN_WIDTH - hint_surf.get_width()) // 2, result_y + 15))
+    
+    def _draw_priority_confirm(self):
+        """Draw priority change confirmation"""
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        self.screen.blit(overlay, (0, 0))
+        
+        box_w, box_h = 300, 120
+        box_x = (SCREEN_WIDTH - box_w) // 2
+        box_y = (SCREEN_HEIGHT - box_h) // 2
+        
+        pygame.draw.rect(self.screen, (40, 44, 60), (box_x, box_y, box_w, box_h), border_radius=10)
+        pygame.draw.rect(self.screen, (150, 120, 50), (box_x, box_y, box_w, box_h), width=2, border_radius=10)
+        
+        # Title
+        title_surf = self.fonts['msg'].render("Change Priority?", True, (230, 220, 180))
+        self.screen.blit(title_surf, (box_x + (box_w - title_surf.get_width()) // 2, box_y + 15))
+        
+        # Current → New
+        old_p = getattr(self, 'kanban_priority_old', '🟡')
+        new_p = getattr(self, 'kanban_priority_new', '🔴')
+        change_text = f"{old_p} → {new_p}"
+        change_surf = self.fonts['msg'].render(change_text, True, (200, 200, 200))
+        self.screen.blit(change_surf, (box_x + (box_w - change_surf.get_width()) // 2, box_y + 50))
+        
+        # Buttons
+        hint_surf = self.fonts['status'].render("Enter Confirm  •  Esc Cancel", True, (140, 145, 165))
+        self.screen.blit(hint_surf, (box_x + (box_w - hint_surf.get_width()) // 2, box_y + 90))
+    
+    def _draw_new_card_form(self):
+        """Draw new card input form"""
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 200))
+        self.screen.blit(overlay, (0, 0))
+        
+        box_w, box_h = 500, 220
+        box_x = (SCREEN_WIDTH - box_w) // 2
+        box_y = 80
+        
+        pygame.draw.rect(self.screen, (35, 38, 52), (box_x, box_y, box_w, box_h), border_radius=10)
+        pygame.draw.rect(self.screen, (80, 160, 120), (box_x, box_y, box_w, box_h), width=2, border_radius=10)
+        
+        # Title
+        title_surf = self.fonts['msg'].render("✨ New Card", True, (120, 200, 150))
+        self.screen.blit(title_surf, (box_x + 20, box_y + 12))
+        
+        # Fields
+        fields = [
+            ('Title:', 'kanban_new_title', 0),
+            ('Description:', 'kanban_new_desc', 1),
+            ('Context:', 'kanban_new_context', 2),
+        ]
+        
+        active_field = getattr(self, 'kanban_new_field', 0)
+        field_y = box_y + 45
+        
+        for label, attr, idx in fields:
+            is_active = idx == active_field
+            
+            # Label
+            label_surf = self.fonts['status'].render(label, True, (150, 155, 175))
+            self.screen.blit(label_surf, (box_x + 20, field_y + 5))
+            
+            # Input box
+            input_x = box_x + 110
+            input_w = box_w - 130
+            bg_color = (50, 55, 75) if is_active else (40, 44, 58)
+            pygame.draw.rect(self.screen, bg_color, (input_x, field_y, input_w, 28), border_radius=5)
+            if is_active:
+                pygame.draw.rect(self.screen, (100, 180, 140), (input_x, field_y, input_w, 28), width=1, border_radius=5)
+            
+            # Text
+            text = getattr(self, attr, '')
+            display_text = text + ('_' if is_active else '')
+            text_surf = self.fonts['status'].render(display_text[:40], True, (210, 215, 230))
+            self.screen.blit(text_surf, (input_x + 8, field_y + 6))
+            
+            field_y += 38
+        
+        # Priority selector
+        priority_y = field_y + 5
+        label_surf = self.fonts['status'].render("Priority:", True, (150, 155, 175))
+        self.screen.blit(label_surf, (box_x + 20, priority_y + 5))
+        
+        priorities = [('🔴', 'red'), ('🟡', 'yellow'), ('🟢', 'green')]
+        current_p = getattr(self, 'kanban_new_priority', '🟡')
+        px = box_x + 110
+        for emoji, _ in priorities:
+            is_selected = emoji == current_p
+            bg = (70, 75, 95) if is_selected else (45, 48, 62)
+            pygame.draw.rect(self.screen, bg, (px, priority_y, 35, 28), border_radius=5)
+            if is_selected:
+                pygame.draw.rect(self.screen, (180, 140, 60), (px, priority_y, 35, 28), width=2, border_radius=5)
+            p_surf = self.fonts['msg'].render(emoji, True, (255, 255, 255))
+            self.screen.blit(p_surf, (px + 8, priority_y + 4))
+            px += 45
+        
+        # Hint
+        hint_surf = self.fonts['status'].render("Tab Next • 1/2/3 Priority • Enter Save • Esc Cancel", True, (100, 105, 125))
+        self.screen.blit(hint_surf, (box_x + (box_w - hint_surf.get_width()) // 2, box_y + box_h - 25))
+    
     def _get_kanban_column_cards(self, col_name):
         """Get cards for a column"""
         return self.kanban_data.get(col_name, [])
@@ -3204,6 +3380,24 @@ class DashboardApp:
                 self.kanban_detail = False
             return
         
+        # Handle search mode
+        if getattr(self, 'kanban_search_mode', False):
+            self._handle_search_key(event)
+            return
+        
+        # Handle priority confirm
+        if getattr(self, 'kanban_priority_confirm', False):
+            if event.key == pygame.K_RETURN:
+                self._apply_priority_change()
+            elif event.key == pygame.K_ESCAPE:
+                self.kanban_priority_confirm = False
+            return
+        
+        # Handle new card form
+        if getattr(self, 'kanban_new_card_mode', False):
+            self._handle_new_card_key(event)
+            return
+        
         # Space = pick up or place card
         if event.key == pygame.K_SPACE:
             if self.kanban_holding:
@@ -3298,6 +3492,38 @@ class DashboardApp:
             if not self.kanban_holding:
                 self._load_kanban_data()
                 self.kanban_last_refresh = time.time()
+        
+        # P = change priority (with confirm)
+        elif event.key == pygame.K_p:
+            if not self.kanban_holding:
+                card = self._get_selected_card()
+                if card:
+                    old_p = card.get('priority', '🟡')
+                    # Cycle: 🟡 → 🔴 → 🟢 → 🟡
+                    cycle = {'🟡': '🔴', '🔴': '🟢', '🟢': '🟡'}
+                    new_p = cycle.get(old_p, '🟡')
+                    self.kanban_priority_old = old_p
+                    self.kanban_priority_new = new_p
+                    self.kanban_priority_card = card
+                    self.kanban_priority_confirm = True
+        
+        # / = search
+        elif event.key == pygame.K_SLASH:
+            if not self.kanban_holding:
+                self.kanban_search_mode = True
+                self.kanban_search_text = ''
+                self.kanban_search_results = []
+                self.kanban_search_idx = 0
+        
+        # N = new card
+        elif event.key == pygame.K_n:
+            if not self.kanban_holding:
+                self.kanban_new_card_mode = True
+                self.kanban_new_title = ''
+                self.kanban_new_desc = ''
+                self.kanban_new_context = '@salon'
+                self.kanban_new_priority = '🟡'
+                self.kanban_new_field = 0
         
         # Escape = cancel hold or go home
         elif event.key == pygame.K_ESCAPE:
@@ -3403,6 +3629,227 @@ class DashboardApp:
         self.kanban_holding = None
         self.kanban_holding_from = None
         self.kanban_card = 0
+    
+    def _get_selected_card(self):
+        """Get currently selected card"""
+        all_columns = ['Not Started', 'Research', 'Active', 'Stuck', 'Review', 'Implement', 'Finished']
+        
+        if getattr(self, 'kanban_in_fasttrack', False):
+            ft_data = getattr(self, 'kanban_fasttrack', {})
+            ft_cards = []
+            for col in all_columns:
+                ft_cards.extend(ft_data.get(col, []))
+            if self.kanban_ft_card < len(ft_cards):
+                return ft_cards[self.kanban_ft_card]
+        else:
+            col = all_columns[self.kanban_col]
+            cards = self.kanban_data.get(col, [])
+            if self.kanban_card < len(cards):
+                return cards[self.kanban_card]
+        return None
+    
+    def _handle_search_key(self, event):
+        """Handle keyboard input in search mode"""
+        if event.key == pygame.K_ESCAPE:
+            self.kanban_search_mode = False
+        elif event.key == pygame.K_RETURN:
+            # Go to selected result
+            results = getattr(self, 'kanban_search_results', [])
+            idx = getattr(self, 'kanban_search_idx', 0)
+            if results and idx < len(results):
+                card = results[idx]
+                col = card.get('_from_column', 'Active')
+                all_columns = ['Not Started', 'Research', 'Active', 'Stuck', 'Review', 'Implement', 'Finished']
+                if col in all_columns:
+                    self.kanban_col = all_columns.index(col)
+                    cards = self.kanban_data.get(col, [])
+                    for i, c in enumerate(cards):
+                        if c.get('title') == card.get('title'):
+                            self.kanban_card = i
+                            break
+                    self.kanban_in_fasttrack = False
+            self.kanban_search_mode = False
+        elif event.key == pygame.K_UP:
+            if self.kanban_search_idx > 0:
+                self.kanban_search_idx -= 1
+        elif event.key == pygame.K_DOWN:
+            results = getattr(self, 'kanban_search_results', [])
+            if self.kanban_search_idx < len(results) - 1:
+                self.kanban_search_idx += 1
+        elif event.key == pygame.K_BACKSPACE:
+            self.kanban_search_text = self.kanban_search_text[:-1]
+            self._update_search_results()
+        elif event.unicode and event.unicode.isprintable():
+            self.kanban_search_text += event.unicode
+            self._update_search_results()
+    
+    def _update_search_results(self):
+        """Update search results based on current search text"""
+        query = self.kanban_search_text.lower()
+        results = []
+        all_columns = ['Not Started', 'Research', 'Active', 'Stuck', 'Review', 'Implement', 'Finished']
+        
+        # Search main board
+        for col in all_columns:
+            for card in self.kanban_data.get(col, []):
+                title = card.get('title', '').lower()
+                desc = card.get('description', '').lower()
+                if query in title or query in desc:
+                    card['_from_column'] = col
+                    results.append(card)
+        
+        # Search fast track
+        ft_data = getattr(self, 'kanban_fasttrack', {})
+        for col in all_columns:
+            for card in ft_data.get(col, []):
+                title = card.get('title', '').lower()
+                desc = card.get('description', '').lower()
+                if query in title or query in desc:
+                    card['_from_column'] = col
+                    results.append(card)
+        
+        self.kanban_search_results = results
+        self.kanban_search_idx = 0
+    
+    def _apply_priority_change(self):
+        """Apply the priority change to the card and file"""
+        import re
+        card = getattr(self, 'kanban_priority_card', None)
+        new_p = getattr(self, 'kanban_priority_new', '🟡')
+        
+        if not card:
+            self.kanban_priority_confirm = False
+            return
+        
+        old_title = card.get('title', '')
+        old_p = card.get('priority', '🟡')
+        
+        # Update in memory
+        card['priority'] = new_p
+        
+        # Update file
+        board_name = getattr(self, 'kanban_board', 'salon')
+        kanban_file = Path.home() / f'.openclaw/workspace/work/kanban/{board_name}.md'
+        
+        try:
+            content = kanban_file.read_text()
+            # Replace old priority with new in the title line
+            old_line = f'## {old_title}'
+            # The priority emoji might be at the end
+            if old_p in old_line:
+                new_line = old_line.replace(old_p, new_p)
+            else:
+                # Priority is separate, need to find the pattern
+                pattern = rf'(## {re.escape(old_title.replace(old_p, "").strip())})\s*{re.escape(old_p)}'
+                new_line = rf'\1 {new_p}'
+                content = re.sub(pattern, new_line, content)
+                kanban_file.write_text(content)
+                self._load_kanban_data()
+                self.kanban_priority_confirm = False
+                return
+            
+            content = content.replace(old_line, new_line.replace(old_p, new_p))
+            kanban_file.write_text(content)
+            self._load_kanban_data()
+        except Exception:
+            pass
+        
+        self.kanban_priority_confirm = False
+    
+    def _handle_new_card_key(self, event):
+        """Handle keyboard input in new card form"""
+        if event.key == pygame.K_ESCAPE:
+            self.kanban_new_card_mode = False
+        elif event.key == pygame.K_RETURN:
+            self._save_new_card()
+        elif event.key == pygame.K_TAB:
+            # Cycle through fields
+            self.kanban_new_field = (self.kanban_new_field + 1) % 3
+        elif event.key in (pygame.K_1, pygame.K_KP1):
+            self.kanban_new_priority = '🔴'
+        elif event.key in (pygame.K_2, pygame.K_KP2):
+            self.kanban_new_priority = '🟡'
+        elif event.key in (pygame.K_3, pygame.K_KP3):
+            self.kanban_new_priority = '🟢'
+        elif event.key == pygame.K_BACKSPACE:
+            field = self.kanban_new_field
+            if field == 0:
+                self.kanban_new_title = self.kanban_new_title[:-1]
+            elif field == 1:
+                self.kanban_new_desc = self.kanban_new_desc[:-1]
+            else:
+                self.kanban_new_context = self.kanban_new_context[:-1]
+        elif event.unicode and event.unicode.isprintable():
+            field = self.kanban_new_field
+            if field == 0:
+                self.kanban_new_title += event.unicode
+            elif field == 1:
+                self.kanban_new_desc += event.unicode
+            else:
+                self.kanban_new_context += event.unicode
+    
+    def _save_new_card(self):
+        """Save new card to file"""
+        import uuid
+        from datetime import datetime
+        
+        title = getattr(self, 'kanban_new_title', '').strip()
+        if not title:
+            self.kanban_new_card_mode = False
+            return
+        
+        desc = getattr(self, 'kanban_new_desc', '')
+        context = getattr(self, 'kanban_new_context', '@salon')
+        priority = getattr(self, 'kanban_new_priority', '🟡')
+        
+        # Build card block
+        card_id = str(uuid.uuid4())
+        timestamp = datetime.now().isoformat()
+        
+        card_block = f"""## {title} {priority}
+<!-- id: {card_id} -->
+<!-- timestamps: {{"createdAt":"{timestamp}","columnSince":"{timestamp}"}} -->
+**Due:** TBD | **Context:** {context}
+**Assignee:** —
+**Waiting On:** —
+
+{desc}
+
+### Status
+[New]
+
+### Checklist
+- [ ] Define scope
+
+### Notes
+- {datetime.now().strftime('%Y-%m-%d')}: Created
+
+---
+"""
+        
+        # Add to file in current column
+        all_columns = ['Not Started', 'Research', 'Active', 'Stuck', 'Review', 'Implement', 'Finished']
+        target_col = all_columns[self.kanban_col]
+        
+        board_name = getattr(self, 'kanban_board', 'salon')
+        kanban_file = Path.home() / f'.openclaw/workspace/work/kanban/{board_name}.md'
+        
+        try:
+            content = kanban_file.read_text()
+            
+            # Find target column
+            pattern = rf'(### {target_col}\n(?:<!--[^>]*-->\n)?)'
+            match = re.search(pattern, content)
+            
+            if match:
+                insert_at = match.end()
+                content = content[:insert_at] + '\n' + card_block + content[insert_at:]
+                kanban_file.write_text(content)
+                self._load_kanban_data()
+        except Exception:
+            pass
+        
+        self.kanban_new_card_mode = False
             
     def run(self):
         running = True

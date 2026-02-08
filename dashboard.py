@@ -2165,75 +2165,105 @@ class DashboardApp:
         overlay.fill((0, 0, 0, 200))
         self.screen.blit(overlay, (0, 0))
         
-        box_w, box_h = 500, 220
+        box_w, box_h = 550, 280
         box_x = (SCREEN_WIDTH - box_w) // 2
-        box_y = 80
+        box_y = 50
         
         pygame.draw.rect(self.screen, (35, 38, 52), (box_x, box_y, box_w, box_h), border_radius=10)
         pygame.draw.rect(self.screen, (80, 160, 120), (box_x, box_y, box_w, box_h), width=2, border_radius=10)
         
         # Title
-        title_surf = self.fonts['msg'].render("✨ New Card", True, (120, 200, 150))
-        self.screen.blit(title_surf, (box_x + 20, box_y + 12))
-        
-        # Fields
-        fields = [
-            ('Title:', 'kanban_new_title', 0),
-            ('Description:', 'kanban_new_desc', 1),
-            ('Context:', 'kanban_new_context', 2),
-        ]
+        title_surf = self.fonts['msg'].render("New Card", True, (120, 200, 150))
+        self.screen.blit(title_surf, (box_x + 20, box_y + 10))
         
         active_field = getattr(self, 'kanban_new_field', 0)
-        field_y = box_y + 45
+        input_x = box_x + 100
+        input_w = box_w - 120
         
-        for label, attr, idx in fields:
-            is_active = idx == active_field
-            
-            # Label
-            label_surf = self.fonts['status'].render(label, True, (150, 155, 175))
-            self.screen.blit(label_surf, (box_x + 20, field_y + 5))
-            
-            # Input box
-            input_x = box_x + 110
-            input_w = box_w - 130
-            bg_color = (50, 55, 75) if is_active else (40, 44, 58)
-            pygame.draw.rect(self.screen, bg_color, (input_x, field_y, input_w, 28), border_radius=5)
-            if is_active:
-                pygame.draw.rect(self.screen, (100, 180, 140), (input_x, field_y, input_w, 28), width=1, border_radius=5)
-            
-            # Text
-            text = getattr(self, attr, '')
-            display_text = text + ('_' if is_active else '')
-            text_surf = self.fonts['status'].render(display_text[:40], True, (210, 215, 230))
-            self.screen.blit(text_surf, (input_x + 8, field_y + 6))
-            
-            field_y += 38
+        # Field 0: Title
+        field_y = box_y + 40
+        is_active = active_field == 0
+        label_surf = self.fonts['status'].render("Title:", True, (150, 155, 175))
+        self.screen.blit(label_surf, (box_x + 20, field_y + 5))
+        bg_color = (50, 55, 75) if is_active else (40, 44, 58)
+        pygame.draw.rect(self.screen, bg_color, (input_x, field_y, input_w, 28), border_radius=5)
+        if is_active:
+            pygame.draw.rect(self.screen, (100, 180, 140), (input_x, field_y, input_w, 28), width=1, border_radius=5)
+        text = getattr(self, 'kanban_new_title', '')
+        display_text = text + ('_' if is_active else '')
+        text_surf = self.fonts['status'].render(display_text[:50], True, (210, 215, 230))
+        self.screen.blit(text_surf, (input_x + 8, field_y + 6))
         
-        # Priority selector (1=High, 2=Med, 3=Low)
-        priority_y = field_y + 5
+        # Field 1: Description (taller)
+        field_y += 38
+        is_active = active_field == 1
+        label_surf = self.fonts['status'].render("Desc:", True, (150, 155, 175))
+        self.screen.blit(label_surf, (box_x + 20, field_y + 5))
+        bg_color = (50, 55, 75) if is_active else (40, 44, 58)
+        desc_h = 55
+        pygame.draw.rect(self.screen, bg_color, (input_x, field_y, input_w, desc_h), border_radius=5)
+        if is_active:
+            pygame.draw.rect(self.screen, (100, 180, 140), (input_x, field_y, input_w, desc_h), width=1, border_radius=5)
+        text = getattr(self, 'kanban_new_desc', '')
+        # Show 2 lines of description
+        line1 = text[:45] + ('_' if is_active and len(text) <= 45 else '')
+        line2 = text[45:90] + ('_' if is_active and len(text) > 45 else '') if len(text) > 45 else ''
+        text_surf1 = self.fonts['status'].render(line1, True, (210, 215, 230))
+        self.screen.blit(text_surf1, (input_x + 8, field_y + 6))
+        if line2:
+            text_surf2 = self.fonts['status'].render(line2, True, (210, 215, 230))
+            self.screen.blit(text_surf2, (input_x + 8, field_y + 24))
+        
+        # Field 2: Context with help
+        field_y += desc_h + 10
+        is_active = active_field == 2
+        label_surf = self.fonts['status'].render("Context:", True, (150, 155, 175))
+        self.screen.blit(label_surf, (box_x + 20, field_y + 5))
+        bg_color = (50, 55, 75) if is_active else (40, 44, 58)
+        ctx_w = 180
+        pygame.draw.rect(self.screen, bg_color, (input_x, field_y, ctx_w, 28), border_radius=5)
+        if is_active:
+            pygame.draw.rect(self.screen, (100, 180, 140), (input_x, field_y, ctx_w, 28), width=1, border_radius=5)
+        text = getattr(self, 'kanban_new_context', '@salon')
+        display_text = text + ('_' if is_active else '')
+        text_surf = self.fonts['status'].render(display_text[:20], True, (210, 215, 230))
+        self.screen.blit(text_surf, (input_x + 8, field_y + 6))
+        # Help text
+        help_surf = self.fonts['status'].render("@salon @home @computer @errands", True, (90, 95, 115))
+        self.screen.blit(help_surf, (input_x + ctx_w + 10, field_y + 8))
+        
+        # Field 3: Priority (arrow selectable)
+        field_y += 38
+        is_active = active_field == 3
         label_surf = self.fonts['status'].render("Priority:", True, (150, 155, 175))
-        self.screen.blit(label_surf, (box_x + 20, priority_y + 5))
+        self.screen.blit(label_surf, (box_x + 20, field_y + 5))
         
         priorities = [
-            ('🔴', '1-HIGH', (200, 60, 60)),
-            ('🟡', '2-MED', (180, 150, 40)),
-            ('🟢', '3-LOW', (60, 150, 80))
+            ('🔴', 'HIGH', (200, 60, 60)),
+            ('🟡', 'MED', (180, 150, 40)),
+            ('🟢', 'LOW', (60, 150, 80))
         ]
         current_p = getattr(self, 'kanban_new_priority', '🟡')
-        px = box_x + 110
-        for emoji, label, color in priorities:
+        px = input_x
+        for i, (emoji, label, color) in enumerate(priorities):
             is_selected = emoji == current_p
             bg = color if is_selected else (45, 48, 62)
-            pygame.draw.rect(self.screen, bg, (px, priority_y, 70, 28), border_radius=5)
+            pygame.draw.rect(self.screen, bg, (px, field_y, 65, 28), border_radius=5)
             if is_selected:
-                pygame.draw.rect(self.screen, (255, 255, 255), (px, priority_y, 70, 28), width=2, border_radius=5)
-            p_surf = self.fonts['status'].render(label, True, (255, 255, 255))
-            self.screen.blit(p_surf, (px + 8, priority_y + 7))
-            px += 80
+                pygame.draw.rect(self.screen, (255, 255, 255), (px, field_y, 65, 28), width=2, border_radius=5)
+            # Show key number
+            key_label = f"{i+1}-{label}"
+            p_surf = self.fonts['status'].render(key_label, True, (255, 255, 255))
+            self.screen.blit(p_surf, (px + 6, field_y + 7))
+            px += 75
+        
+        if is_active:
+            arrow_hint = self.fonts['status'].render("<< arrows >>", True, (140, 180, 160))
+            self.screen.blit(arrow_hint, (px + 10, field_y + 7))
         
         # Hint
-        hint_surf = self.fonts['status'].render("Tab Next • 1/2/3 Priority • Enter Save • Esc Cancel", True, (100, 105, 125))
-        self.screen.blit(hint_surf, (box_x + (box_w - hint_surf.get_width()) // 2, box_y + box_h - 25))
+        hint_surf = self.fonts['status'].render("Tab Fields • Arrows Priority • 1/2/3 Quick • Enter Save • Esc Cancel", True, (100, 105, 125))
+        self.screen.blit(hint_surf, (box_x + (box_w - hint_surf.get_width()) // 2, box_y + box_h - 22))
     
     def _get_kanban_column_cards(self, col_name):
         """Get cards for a column"""
@@ -3788,35 +3818,47 @@ class DashboardApp:
     
     def _handle_new_card_key(self, event):
         """Handle keyboard input in new card form"""
+        field = getattr(self, 'kanban_new_field', 0)
+        
         if event.key == pygame.K_ESCAPE:
             self.kanban_new_card_mode = False
         elif event.key == pygame.K_RETURN:
             self._save_new_card()
         elif event.key == pygame.K_TAB:
-            # Cycle through fields
-            self.kanban_new_field = (self.kanban_new_field + 1) % 3
+            # Cycle through 4 fields: title, desc, context, priority
+            self.kanban_new_field = (field + 1) % 4
         elif event.key in (pygame.K_1, pygame.K_KP1):
             self.kanban_new_priority = '🔴'
         elif event.key in (pygame.K_2, pygame.K_KP2):
             self.kanban_new_priority = '🟡'
         elif event.key in (pygame.K_3, pygame.K_KP3):
             self.kanban_new_priority = '🟢'
+        elif event.key == pygame.K_LEFT and field == 3:
+            # Arrow left on priority field
+            p_order = ['🔴', '🟡', '🟢']
+            current = getattr(self, 'kanban_new_priority', '🟡')
+            idx = p_order.index(current) if current in p_order else 1
+            self.kanban_new_priority = p_order[(idx - 1) % 3]
+        elif event.key == pygame.K_RIGHT and field == 3:
+            # Arrow right on priority field
+            p_order = ['🔴', '🟡', '🟢']
+            current = getattr(self, 'kanban_new_priority', '🟡')
+            idx = p_order.index(current) if current in p_order else 1
+            self.kanban_new_priority = p_order[(idx + 1) % 3]
         elif event.key == pygame.K_BACKSPACE:
-            field = self.kanban_new_field
             if field == 0:
-                self.kanban_new_title = self.kanban_new_title[:-1]
+                self.kanban_new_title = getattr(self, 'kanban_new_title', '')[:-1]
             elif field == 1:
-                self.kanban_new_desc = self.kanban_new_desc[:-1]
-            else:
-                self.kanban_new_context = self.kanban_new_context[:-1]
-        elif event.unicode and event.unicode.isprintable():
-            field = self.kanban_new_field
+                self.kanban_new_desc = getattr(self, 'kanban_new_desc', '')[:-1]
+            elif field == 2:
+                self.kanban_new_context = getattr(self, 'kanban_new_context', '')[:-1]
+        elif event.unicode and event.unicode.isprintable() and field < 3:
             if field == 0:
-                self.kanban_new_title += event.unicode
+                self.kanban_new_title = getattr(self, 'kanban_new_title', '') + event.unicode
             elif field == 1:
-                self.kanban_new_desc += event.unicode
-            else:
-                self.kanban_new_context += event.unicode
+                self.kanban_new_desc = getattr(self, 'kanban_new_desc', '') + event.unicode
+            elif field == 2:
+                self.kanban_new_context = getattr(self, 'kanban_new_context', '') + event.unicode
     
     def _save_new_card(self):
         """Save new card to file"""

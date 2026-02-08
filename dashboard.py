@@ -2303,8 +2303,8 @@ class DashboardApp:
             'Active': (60, 180, 100), 'Stuck': (200, 70, 70),
             'Review': (200, 160, 50), 'Implement': (140, 90, 190), 'Finished': (50, 160, 90)
         }
-        col_icons = {'Not Started': 'NEW', 'Research': 'RES', 'Active': 'ACT', 'Stuck': 'STK', 
-                     'Review': 'REV', 'Implement': 'IMP', 'Finished': 'FIN'}
+        col_short = {'Not Started': 'Not Started', 'Research': 'Research', 'Active': 'Active', 'Stuck': 'Stuck', 
+                     'Review': 'Review', 'Implement': 'Implement', 'Finished': 'Done'}
         
         # ═══════════════════════════════════════════════════════════════
         # BACKGROUND
@@ -2481,18 +2481,11 @@ class DashboardApp:
             col_header_h = 24
             pygame.draw.rect(self.screen, col_color, (col_x, cols_y, col_w - col_gap, col_header_h), border_top_left_radius=6, border_top_right_radius=6)
             
-            if is_finished:
-                # Finished: just show count vertically
-                count_surf = self.fonts['status'].render(str(len(cards)), True, (255, 255, 255))
-                self.screen.blit(count_surf, (col_x + (col_w - col_gap) // 2 - count_surf.get_width() // 2, cols_y + 5))
-            else:
-                # Normal columns: show label centered
-                icon = col_icons[col_name]
-                count = len(cards)
-                label_text = f"{icon} {count}"
-                label_surf = self.fonts['status'].render(label_text, True, (255, 255, 255))
-                label_x = col_x + (col_w - col_gap - label_surf.get_width()) // 2
-                self.screen.blit(label_surf, (label_x, cols_y + 5))
+            # Column header - show full name
+            label_text = col_short[col_name]
+            label_surf = self.fonts['status'].render(label_text, True, (255, 255, 255))
+            label_x = col_x + (col_w - col_gap - label_surf.get_width()) // 2
+            self.screen.blit(label_surf, (label_x, cols_y + 5))
             
             # Cards
             cards_y = cols_y + col_header_h + 2

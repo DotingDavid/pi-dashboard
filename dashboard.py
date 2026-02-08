@@ -1777,10 +1777,10 @@ class DashboardApp:
         self.screen.blit(sync_surf, (SCREEN_WIDTH - 25, header_y + 4))
         
         # ═══════════════════════════════════════════════════════════════
-        # FAST TRACK ROW - Always visible at top
+        # FAST TRACK ROW - Always visible at top, column layout
         # ═══════════════════════════════════════════════════════════════
-        ft_y = header_y + header_h + 6
-        ft_h = 50
+        ft_y = header_y + header_h + 4
+        ft_h = 70  # Taller for better visibility
         
         # Collect all fast track items from current board
         ft_cards = []
@@ -1793,54 +1793,73 @@ class DashboardApp:
         # Fast track container with pulsing border
         pulse = 0.6 + 0.4 * math.sin(self.kanban_anim * 3)
         ft_border = (int(200 * pulse), int(60 * pulse), int(60 * pulse))
-        pygame.draw.rect(self.screen, (35, 25, 25), (10, ft_y, SCREEN_WIDTH - 20, ft_h), border_radius=8)
-        pygame.draw.rect(self.screen, ft_border, (10, ft_y, SCREEN_WIDTH - 20, ft_h), width=2, border_radius=8)
+        is_ft_selected = getattr(self, 'kanban_in_fasttrack', False)
         
-        # Fast track label
-        ft_label = self.fonts['status'].render('🔥 FAST TRACK', True, (255, 100, 80))
+        if is_ft_selected:
+            # Brighter when selected
+            pygame.draw.rect(self.screen, (45, 30, 30), (10, ft_y, SCREEN_WIDTH - 20, ft_h), border_radius=8)
+            pygame.draw.rect(self.screen, (255, 100, 80), (10, ft_y, SCREEN_WIDTH - 20, ft_h), width=2, border_radius=8)
+        else:
+            pygame.draw.rect(self.screen, (30, 22, 22), (10, ft_y, SCREEN_WIDTH - 20, ft_h), border_radius=8)
+            pygame.draw.rect(self.screen, ft_border, (10, ft_y, SCREEN_WIDTH - 20, ft_h), width=1, border_radius=8)
+        
+        # Fast track label with fire
+        fire_pulse = 0.8 + 0.2 * math.sin(self.kanban_anim * 4)
+        ft_label = self.fonts['status'].render('🔥 FAST TRACK', True, (int(255 * fire_pulse), int(100 * fire_pulse), 80))
         self.screen.blit(ft_label, (18, ft_y + 4))
         
-        # Fast track cards - horizontal layout
-        if ft_cards:
-            ft_card_w = 130
-            ft_card_h = 28
-            ft_cards_x = 18
-            ft_cards_y = ft_y + 20
-            max_ft_visible = (SCREEN_WIDTH - 40) // (ft_card_w + 6)
+        # Fast track cards - column layout matching main columns
+        ft_card_h = 24
+        ft_cards_y = ft_y + 22
+        
+        # Use same column positions as main columns for alignment
+        finished_w = 55
+        normal_w = (SCREEN_WIDTH - 20 - finished_w) // 6
+        col_gap = 3
+        
+        ft_col_positions = []
+        current_x = 10
+        for i, col_name in enumerate(all_columns):
+            w = finished_w if col_name == 'Finished' else normal_w
+            ft_col_positions.append((current_x, w))
+            current_x += w + col_gap
+        
+        # Group fast track cards by their source column
+        ft_by_col = {col: [] for col in all_columns}
+        for card in ft_cards:
+            src_col = card.get('_from_column', 'Active')
+            if src_col in ft_by_col:
+                ft_by_col[src_col].append(card)
+        
+        # Draw fast track cards in their column positions
+        ft_card_idx = 0
+        for col_idx, col_name in enumerate(all_columns):
+            col_x, col_w = ft_col_positions[col_idx]
+            col_ft_cards = ft_by_col[col_name]
             
-            for i, card in enumerate(ft_cards[:max_ft_visible]):
-                is_selected = self.kanban_in_fasttrack and i == self.kanban_ft_card
-                card_x = ft_cards_x + i * (ft_card_w + 6)
+            for i, card in enumerate(col_ft_cards[:2]):  # Max 2 per column in FT row
+                is_selected = is_ft_selected and ft_card_idx == getattr(self, 'kanban_ft_card', 0)
+                card_y = ft_cards_y + i * (ft_card_h + 2)
                 
                 # Card background
                 if is_selected:
-                    pygame.draw.rect(self.screen, (70, 45, 45), (card_x, ft_cards_y, ft_card_w, ft_card_h), border_radius=5)
-                    pygame.draw.rect(self.screen, (255, 100, 80), (card_x, ft_cards_y, ft_card_w, ft_card_h), border_radius=5, width=2)
+                    pygame.draw.rect(self.screen, (80, 50, 50), (col_x + 2, card_y, col_w - col_gap - 4, ft_card_h), border_radius=4)
+                    pygame.draw.rect(self.screen, (255, 120, 100), (col_x + 2, card_y, col_w - col_gap - 4, ft_card_h), border_radius=4, width=2)
                 else:
-                    pygame.draw.rect(self.screen, (50, 35, 35), (card_x, ft_cards_y, ft_card_w, ft_card_h), border_radius=5)
+                    pygame.draw.rect(self.screen, (55, 38, 38), (col_x + 2, card_y, col_w - col_gap - 4, ft_card_h), border_radius=4)
                 
-                # Fire icon
-                fire_pulse = 0.8 + 0.2 * math.sin(self.kanban_anim * 5 + i)
-                fire_surf = self.fonts['status'].render('🔥', True, (int(255 * fire_pulse), int(100 * fire_pulse), 50))
-                self.screen.blit(fire_surf, (card_x + 4, ft_cards_y + 7))
+                # Fire + title
+                title = card.get('title', '').lstrip('🔥').strip()[:10]
+                title_color = (255, 220, 200) if is_selected else (200, 150, 140)
+                title_surf = self.fonts['status'].render(f"🔥{title}", True, title_color)
+                self.screen.blit(title_surf, (col_x + 5, card_y + 5))
                 
-                # Title
-                title = card.get('title', '').lstrip('🔥').strip()[:14]
-                if len(card.get('title', '').lstrip('🔥').strip()) > 14:
-                    title += '…'
-                title_color = (255, 220, 200) if is_selected else (200, 160, 150)
-                title_surf = self.fonts['status'].render(title, True, title_color)
-                self.screen.blit(title_surf, (card_x + 18, ft_cards_y + 8))
-            
-            # Show count if more
-            if len(ft_cards) > max_ft_visible:
-                more_text = f"+{len(ft_cards) - max_ft_visible}"
-                more_surf = self.fonts['status'].render(more_text, True, (180, 100, 80))
-                self.screen.blit(more_surf, (SCREEN_WIDTH - 40, ft_cards_y + 8))
-        else:
-            # No fast track items
-            empty_surf = self.fonts['status'].render('No urgent items', True, (80, 60, 60))
-            self.screen.blit(empty_surf, (SCREEN_WIDTH // 2 - empty_surf.get_width() // 2, ft_y + 22))
+                ft_card_idx += 1
+        
+        # Show empty hint if no fast track items
+        if not ft_cards:
+            empty_surf = self.fonts['status'].render('↑ Space to add urgent items', True, (70, 55, 55))
+            self.screen.blit(empty_surf, (SCREEN_WIDTH // 2 - empty_surf.get_width() // 2, ft_y + 32))
         
         # ═══════════════════════════════════════════════════════════════
         # COLUMNS - Below fast track
@@ -3178,15 +3197,28 @@ class DashboardApp:
         if self.kanban_in_fasttrack:
             # Navigation in fast track row
             if event.key == pygame.K_LEFT:
-                if self.kanban_ft_card > 0:
+                if self.kanban_holding:
+                    # Move between columns while in fast track
+                    if self.kanban_col > 0:
+                        self.kanban_col -= 1
+                elif self.kanban_ft_card > 0:
                     self.kanban_ft_card -= 1
             elif event.key == pygame.K_RIGHT:
-                if ft_cards and self.kanban_ft_card < len(ft_cards) - 1:
+                if self.kanban_holding:
+                    if self.kanban_col < 6:
+                        self.kanban_col += 1
+                elif ft_cards and self.kanban_ft_card < len(ft_cards) - 1:
                     self.kanban_ft_card += 1
             elif event.key == pygame.K_DOWN:
-                # Exit fast track to columns
-                self.kanban_in_fasttrack = False
-                self.kanban_card = 0
+                if self.kanban_holding:
+                    # Drop card out of fast track (removes 🔥)
+                    self.kanban_in_fasttrack = False
+                    self._place_kanban_card()
+                    self.kanban_card = 0
+                else:
+                    # Exit fast track to columns
+                    self.kanban_in_fasttrack = False
+                    self.kanban_card = 0
             elif event.key == pygame.K_RETURN:
                 if ft_cards and self.kanban_ft_card < len(ft_cards):
                     self.kanban_detail = True
@@ -3205,14 +3237,19 @@ class DashboardApp:
                         self.kanban_card = 0
                         self.kanban_scroll[self.kanban_col] = 0
             elif event.key == pygame.K_UP:
-                if not self.kanban_holding:
+                if self.kanban_holding:
+                    # Holding a card - move to fast track and place
+                    self.kanban_in_fasttrack = True
+                    self._place_kanban_card()
+                    self.kanban_ft_card = 0
+                else:
                     if self.kanban_card > 0:
                         self.kanban_card -= 1
                         scroll = self.kanban_scroll.get(self.kanban_col, 0)
                         if self.kanban_card < scroll:
                             self.kanban_scroll[self.kanban_col] = self.kanban_card
-                    elif self.kanban_card == 0 and ft_cards:
-                        # Move to fast track
+                    elif self.kanban_card == 0:
+                        # Move to fast track row
                         self.kanban_in_fasttrack = True
                         self.kanban_ft_card = 0
             elif event.key == pygame.K_DOWN:
@@ -3253,7 +3290,7 @@ class DashboardApp:
                 self.switch_mode(MODE_DASHBOARD)
     
     def _place_kanban_card(self):
-        """Place the held card in current column"""
+        """Place the held card in current column or fast track"""
         import re
         all_columns = ['Not Started', 'Research', 'Active', 'Stuck', 'Review', 'Implement', 'Finished']
         
@@ -3264,13 +3301,39 @@ class DashboardApp:
         self.kanban_sync_status = 'syncing'
         self.kanban_sync_time = time.time()
         
-        src_col = all_columns[self.kanban_holding_from]
-        dst_col = all_columns[self.kanban_col]
         card = self.kanban_holding
+        moving_to_fasttrack = getattr(self, 'kanban_in_fasttrack', False)
+        
+        # Determine source column
+        if self.kanban_holding_from == -1:
+            # Coming from fast track - find the actual column
+            src_col = card.get('_from_column', 'Active')
+        else:
+            src_col = all_columns[self.kanban_holding_from]
+        
+        # Destination is current column (stay in same column if moving to/from FT)
+        dst_col = all_columns[self.kanban_col] if not moving_to_fasttrack else src_col
+        
+        # Determine if we're adding/removing fast track status
+        old_title = card.get('title', '')
+        was_fasttrack = '🔥' in old_title
+        
+        if moving_to_fasttrack and not was_fasttrack:
+            # Adding to fast track - prepend 🔥
+            new_title = '🔥 ' + old_title
+            card['title'] = new_title
+        elif not moving_to_fasttrack and was_fasttrack and self.kanban_holding_from == -1:
+            # Removing from fast track - strip 🔥
+            new_title = old_title.replace('🔥', '').strip()
+            card['title'] = new_title
+        else:
+            new_title = old_title
         
         # Update in-memory
-        if card in self.kanban_data[src_col]:
+        if card in self.kanban_data.get(src_col, []):
             self.kanban_data[src_col].remove(card)
+        if dst_col not in self.kanban_data:
+            self.kanban_data[dst_col] = []
         self.kanban_data[dst_col].insert(0, card)
         
         # Update file
@@ -3279,15 +3342,19 @@ class DashboardApp:
         
         try:
             content = kanban_file.read_text()
-            card_title = card.get('title', '')
             
-            # Find card block
-            pattern = rf'(## {re.escape(card_title)}.*?(?=\n## |\n### |\Z))'
+            # Find card block using old title
+            pattern = rf'(## {re.escape(old_title)}.*?(?=\n## |\n### |\Z))'
             match = re.search(pattern, content, re.DOTALL)
             
             if match:
                 card_block = match.group(1)
-                content = content.replace(card_block, '', 1)
+                
+                # Update title in block if changed
+                if new_title != old_title:
+                    card_block = card_block.replace(f'## {old_title}', f'## {new_title}', 1)
+                
+                content = content.replace(match.group(1), '', 1)
                 
                 # Find target column
                 dst_pattern = rf'(### {dst_col}.*?\n(?:<!--.*?-->\n)?)'

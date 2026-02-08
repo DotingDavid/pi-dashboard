@@ -1357,16 +1357,17 @@ class DashboardApp:
                                 (100, 220, 160) if stats['mem'] < 60 else (240, 200, 80) if stats['mem'] < 85 else (240, 100, 100))
         
         # Temperature Gauge - same size now
-        temp = stats['temp']
+        temp_c = stats['temp']
+        temp_f = int(temp_c * 9 / 5 + 32)
         temp_cx = panel_x + 55 + gauge_spacing * 2
-        temp_pct = int(min(temp, 85) / 85 * 100)
-        temp_color = (100, 220, 160) if temp < 55 else (240, 200, 80) if temp < 70 else (240, 100, 100)
-        self._draw_premium_gauge(temp_cx, gauge_y, gauge_r, temp_pct, "TEMP", temp_color, show_val=f"{temp}C")
+        temp_pct = int(min(temp_c, 85) / 85 * 100)
+        temp_color = (100, 220, 160) if temp_c < 55 else (240, 200, 80) if temp_c < 70 else (240, 100, 100)
+        self._draw_premium_gauge(temp_cx, gauge_y, gauge_r, temp_pct, "TEMP", temp_color, show_val=f"{temp_f}F")
         
         # ═══════════════════════════════════════════════════════════════
         # STATUS TILES - 2x2 Grid with icons
         # ═══════════════════════════════════════════════════════════════
-        tiles_y = 200
+        tiles_y = 210
         tile_w = 186
         tile_h = 75
         tile_gap = 9

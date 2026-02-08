@@ -1370,9 +1370,9 @@ class DashboardApp:
         # STATUS TILES - 2x2 Grid with icons
         # ═══════════════════════════════════════════════════════════════
         tiles_y = 210
-        tile_w = 188
+        tile_w = 183
         tile_h = 75
-        tile_gap = 8
+        tile_gap = 10
         
         gw_status = self._get_gateway_status()
         gw_connected = gw_status.get('connected', False)
@@ -1409,8 +1409,8 @@ class DashboardApp:
         # ═══════════════════════════════════════════════════════════════
         panel_y = tiles_y + tile_h + 12
         panel_h = SCREEN_HEIGHT - panel_y - 35
-        panel_gap = 10
-        panel_w = (SCREEN_WIDTH - 40 - panel_gap) // 2  # 40 = 15 left + 25 right margin
+        panel_gap = 12
+        panel_w = (SCREEN_WIDTH - 30 - panel_gap) // 2
         
         # ─────────────────────────────────────────────────────────────
         # LEFT PANEL: Top Tasks

@@ -3316,130 +3316,101 @@ class DashboardApp:
                 self.switch_mode(MODE_DASHBOARD)
     
     def _place_kanban_card(self):
-        """Place the held card in current column or fast track"""
+        """
+        Place held card. Handles 4 scenarios:
+        1. Main → Main (different column)
+        2. Fast Track → Fast Track (different column)  
+        3. Main → Fast Track
+        4. Fast Track → Main
+        """
         import re
         all_columns = ['Not Started', 'Research', 'Active', 'Stuck', 'Review', 'Implement', 'Finished']
         
         if not self.kanban_holding:
             return
         
-        # Show syncing status
         self.kanban_sync_status = 'syncing'
         self.kanban_sync_time = time.time()
         
         card = self.kanban_holding
-        moving_to_fasttrack = getattr(self, 'kanban_in_fasttrack', False)
-        
-        # Determine source
-        from_fasttrack = self.kanban_holding_from == -1
-        src_col = card.get('_from_column', 'Active') if from_fasttrack else all_columns[self.kanban_holding_from]
-        dst_col = all_columns[self.kanban_col]
-        
         card_title = card.get('title', '')
         
-        # Update file
+        # Where is it going?
+        to_fasttrack = getattr(self, 'kanban_in_fasttrack', False)
+        dst_col_name = all_columns[self.kanban_col]
+        
+        # Where did it come from?
+        from_fasttrack = (self.kanban_holding_from == -1)
+        if from_fasttrack:
+            src_col_name = card.get('_from_column', 'Active')
+        else:
+            src_col_name = all_columns[self.kanban_holding_from]
+        
+        # Build target column header name
+        if to_fasttrack:
+            target_header = f'{dst_col_name} (Urgent)'
+        else:
+            target_header = dst_col_name
+        
+        # Update markdown file
         board_name = getattr(self, 'kanban_board', 'salon')
         kanban_file = Path.home() / f'.openclaw/workspace/work/kanban/{board_name}.md'
         
         try:
             content = kanban_file.read_text()
             
-            # Find and extract the card block
-            pattern = rf'(## {re.escape(card_title)}.*?(?=\n## |\n### |\Z))'
+            # Find the card block
+            pattern = rf'## {re.escape(card_title)}.*?(?=\n## |\n### |\Z)'
             match = re.search(pattern, content, re.DOTALL)
             
             if not match:
                 self.kanban_sync_status = 'error'
-                self.kanban_holding = None
-                self.kanban_holding_from = None
+                self._clear_holding()
                 return
             
-            card_block = match.group(1).strip()
+            card_block = match.group(0).strip()
             
-            # Remove from old location
-            content = content.replace(match.group(1), '', 1)
-            content = re.sub(r'(---\s*\n){2,}', '---\n\n', content)
+            # Remove card from current location
+            content = content.replace(match.group(0), '', 1)
             
-            # Determine target section
-            if moving_to_fasttrack and not from_fasttrack:
-                # Moving TO Fast Track - use "(Urgent)" column
-                target_col = f'{dst_col} (Urgent)'
-            elif not moving_to_fasttrack and from_fasttrack:
-                # Moving FROM Fast Track - use normal column
-                target_col = dst_col
-            else:
-                # Normal move within same section
-                target_col = f'{dst_col} (Urgent)' if from_fasttrack else dst_col
+            # Clean up empty lines and duplicate separators
+            content = re.sub(r'\n{3,}', '\n\n', content)
+            content = re.sub(r'(---\n)+---', '---', content)
             
-            # Find target column header
-            dst_pattern = rf'(### {re.escape(target_col)}.*?\n(?:<!--.*?-->\n)?)'
-            dst_match = re.search(dst_pattern, content)
+            # Find target column and insert card
+            # Match "### Column Name" followed by optional comment line
+            target_pattern = rf'(### {re.escape(target_header)}\n(?:<!--[^>]*-->\n)?)'
+            target_match = re.search(target_pattern, content)
             
-            if dst_match:
-                insert_pos = dst_match.end()
-                content = content[:insert_pos] + '\n' + card_block + '\n\n---\n\n' + content[insert_pos:]
-                content = re.sub(r'(---\s*\n){2,}', '---\n\n', content)
-                kanban_file.write_text(content)
+            if target_match:
+                insert_at = target_match.end()
+                new_content = (
+                    content[:insert_at] + 
+                    '\n' + card_block + '\n\n---\n\n' + 
+                    content[insert_at:].lstrip('\n')
+                )
+                # Final cleanup
+                new_content = re.sub(r'\n{3,}', '\n\n', new_content)
+                new_content = re.sub(r'(---\n)+---', '---', new_content)
+                
+                kanban_file.write_text(new_content)
                 self.kanban_sync_status = 'live'
+                
+                # Reload data to reflect changes
+                self._load_kanban_data()
             else:
                 self.kanban_sync_status = 'error'
                 
         except Exception as e:
             self.kanban_sync_status = 'error'
         
-        # Clear holding state
+        self._clear_holding()
+    
+    def _clear_holding(self):
+        """Clear the card holding state"""
         self.kanban_holding = None
         self.kanban_holding_from = None
         self.kanban_card = 0
-    
-    def _move_kanban_card(self, target_col_idx):
-        """Move current card to target column and save to file"""
-        import re
-        all_columns = ['Not Started', 'Research', 'Active', 'Stuck', 'Review', 'Implement', 'Finished']
-        src_col = all_columns[self.kanban_col]
-        dst_col = all_columns[target_col_idx]
-        
-        cards = self.kanban_data.get(src_col, [])
-        if not cards or self.kanban_card >= len(cards):
-            return
-        
-        card = cards[self.kanban_card]
-        
-        # Update in-memory data
-        self.kanban_data[src_col].remove(card)
-        self.kanban_data[dst_col].insert(0, card)
-        
-        # Update the markdown file
-        board_name = getattr(self, 'kanban_board', 'salon')
-        kanban_file = Path.home() / f'.openclaw/workspace/work/kanban/{board_name}.md'
-        
-        try:
-            content = kanban_file.read_text()
-            card_title = card.get('title', '')
-            
-            # Find the card block (## Title ... ---)
-            pattern = rf'(## {re.escape(card_title)}.*?(?=\n## |\n### |\Z))'
-            match = re.search(pattern, content, re.DOTALL)
-            
-            if match:
-                card_block = match.group(1)
-                # Remove from current location
-                content = content.replace(card_block, '', 1)
-                
-                # Find target column and insert
-                dst_pattern = rf'(### {dst_col}.*?\n(?:<!--.*?-->\n)?)'
-                dst_match = re.search(dst_pattern, content)
-                if dst_match:
-                    insert_pos = dst_match.end()
-                    content = content[:insert_pos] + '\n' + card_block.strip() + '\n\n---\n' + content[insert_pos:]
-                    kanban_file.write_text(content)
-        except Exception as e:
-            pass  # Silent fail, in-memory state still updated
-        
-        # Move selection to new column
-        self.kanban_col = target_col_idx
-        self.kanban_card = 0
-        self.kanban_moving = False
             
     def run(self):
         running = True

@@ -1379,7 +1379,7 @@ class DashboardApp:
                     hint_surf = self.fonts['status'].render("Enter to save • Esc to cancel", True, (100, 180, 140))
                     self.screen.blit(hint_surf, (main_x + 20, focus_y + 55))
                 else:
-                    title_text = focus_task.get('content', '')[:55] + ('...' if len(focus_task.get('content', '')) > 55 else '')
+                    title_text = focus_task.get('content', '')[:65] + ('...' if len(focus_task.get('content', '')) > 65 else '')
                     title_surf = title_font.render(title_text, True, (235, 240, 255))
                     self.screen.blit(title_surf, (main_x + 20, focus_y + 18))
                 
@@ -1460,7 +1460,7 @@ class DashboardApp:
                 
                 # Task text - use more space
                 text_color = (220, 225, 240) if is_selected else (160, 165, 180)
-                max_len = 45 - indent * 5  # More room for text
+                max_len = 55 - indent * 5  # Even more room for text
                 display_text = content[:max_len] + ('...' if len(content) > max_len else '')
                 text_surf = self.fonts['msg'].render(display_text, True, text_color)
                 self.screen.blit(text_surf, (cb_x + 18, row_y + row_h//2 - text_surf.get_height()//2))

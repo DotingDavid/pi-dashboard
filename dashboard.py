@@ -2030,7 +2030,7 @@ class DashboardApp:
                 if self.kanban_card < len(col_cards):
                     selected_card = col_cards[self.kanban_card]
         
-        if selected_card and not self.kanban_holding:
+        if selected_card and not getattr(self, 'kanban_holding', None):
             desc = selected_card.get('description', '')[:60]
             if len(selected_card.get('description', '')) > 60:
                 desc += '…'

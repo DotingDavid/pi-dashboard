@@ -45,6 +45,6 @@ fi
 
 # Launch dashboard (v11 - Safe Commands Edition)
 echo "Starting Pi 400 Dashboard..."
-python3 dashboard_v13.py
+python3 dashboard_v15.py
 
 exit 0

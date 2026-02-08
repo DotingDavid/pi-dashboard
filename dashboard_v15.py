@@ -1180,17 +1180,14 @@ class DashboardApp:
         now = datetime.now()
         
         # ═══════════════════════════════════════════════════════════════
-        # GRADIENT BACKGROUND
+        # SMOOTH GRADIENT BACKGROUND
         # ═══════════════════════════════════════════════════════════════
-        wave1 = math.sin(self.home_anim * 0.3) * 0.5 + 0.5
-        wave2 = math.sin(self.home_anim * 0.2 + 1) * 0.5 + 0.5
-        
-        for y in range(0, SCREEN_HEIGHT, 3):
+        for y in range(SCREEN_HEIGHT):
             progress = y / SCREEN_HEIGHT
-            cr = int(12 + 8 * wave1 * (1 - progress))
-            cg = int(15 + 5 * wave2 * progress)
-            cb = int(28 + 12 * (1 - progress))
-            pygame.draw.rect(self.screen, (cr, cg, cb), (0, y, SCREEN_WIDTH, 3))
+            cr = int(18 - 6 * progress)
+            cg = int(22 - 4 * progress)
+            cb = int(35 - 8 * progress)
+            pygame.draw.line(self.screen, (cr, cg, cb), (0, y), (SCREEN_WIDTH, y))
         
         # ═══════════════════════════════════════════════════════════════
         # HERO CLOCK - Massive, centered, glowing
@@ -1198,7 +1195,7 @@ class DashboardApp:
         time_str = now.strftime("%I:%M").lstrip('0')
         time_surf = self.fonts['big'].render(time_str, True, (255, 255, 255))
         clock_x = 40
-        clock_y = 45
+        clock_y = 38
         
         # Multi-layer glow effect
         glow_pulse = 0.7 + 0.3 * math.sin(self.home_anim * 2)
@@ -1317,7 +1314,7 @@ class DashboardApp:
         # SYSTEM PANEL - Modern glass morphism
         # ═══════════════════════════════════════════════════════════════
         panel_x = 480
-        panel_y = 45
+        panel_y = 38
         panel_w = 305
         panel_h = 155
         
@@ -1369,10 +1366,10 @@ class DashboardApp:
         # ═══════════════════════════════════════════════════════════════
         # STATUS TILES - 2x2 Grid with icons
         # ═══════════════════════════════════════════════════════════════
-        tiles_y = 210
-        tile_w = 183
+        tiles_y = 200
+        tile_w = 186
         tile_h = 75
-        tile_gap = 10
+        tile_gap = 9
         
         gw_status = self._get_gateway_status()
         gw_connected = gw_status.get('connected', False)

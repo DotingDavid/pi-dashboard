@@ -1405,53 +1405,116 @@ class DashboardApp:
                               "C", True)
         
         # ═══════════════════════════════════════════════════════════════
-        # CHAT PREVIEW - Last messages from chat
+        # BOTTOM PANELS - Tasks + Active Projects side by side
         # ═══════════════════════════════════════════════════════════════
-        feed_y = tiles_y + tile_h + 12
-        feed_h = SCREEN_HEIGHT - feed_y - 35
+        panel_y = tiles_y + tile_h + 12
+        panel_h = SCREEN_HEIGHT - panel_y - 35
+        panel_gap = 12
+        panel_w = (SCREEN_WIDTH - 30 - panel_gap) // 2
         
-        # Container
-        feed_surf = pygame.Surface((SCREEN_WIDTH - 30, feed_h), pygame.SRCALPHA)
-        feed_surf.fill((20, 28, 42, 200))
-        self.screen.blit(feed_surf, (15, feed_y))
-        pygame.draw.rect(self.screen, (50, 65, 95), (15, feed_y, SCREEN_WIDTH - 30, feed_h), width=1, border_radius=10)
+        # ─────────────────────────────────────────────────────────────
+        # LEFT PANEL: Top Tasks
+        # ─────────────────────────────────────────────────────────────
+        left_x = 15
+        
+        # Panel background with subtle gradient
+        panel_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        for py in range(panel_h):
+            alpha = 180 + int(20 * (py / panel_h))
+            panel_surf.fill((25, 35, 55, alpha), (0, py, panel_w, 1))
+        self.screen.blit(panel_surf, (left_x, panel_y))
+        pygame.draw.rect(self.screen, (60, 80, 120), (left_x, panel_y, panel_w, panel_h), width=1, border_radius=10)
+        
+        # Header with accent
+        pygame.draw.rect(self.screen, (255, 180, 80), (left_x + 12, panel_y + 10, 3, 14), border_radius=1)
+        title_surf = self.fonts['status'].render("TOP TASKS", True, (255, 200, 120))
+        self.screen.blit(title_surf, (left_x + 22, panel_y + 10))
+        
+        # Get urgent tasks
+        urgent_tasks = []
+        for task in self.tasks[:8]:
+            if task.get('due') or 'today' in str(task.get('labels', [])).lower():
+                urgent_tasks.append(task)
+        if len(urgent_tasks) < 4:
+            for task in self.tasks[:8]:
+                if task not in urgent_tasks:
+                    urgent_tasks.append(task)
+                if len(urgent_tasks) >= 4:
+                    break
+        
+        task_y = panel_y + 32
+        for i, task in enumerate(urgent_tasks[:4]):
+            # Priority indicator
+            p = task.get('priority', 1)
+            p_color = (255, 90, 90) if p >= 4 else (255, 180, 80) if p >= 3 else (100, 180, 255)
+            pygame.draw.circle(self.screen, p_color, (left_x + 20, task_y + 10), 4)
+            
+            # Task name
+            name = task.get('content', '')[:28]
+            if len(task.get('content', '')) > 28:
+                name += '...'
+            name_surf = self.fonts['msg'].render(name, True, (220, 230, 245))
+            self.screen.blit(name_surf, (left_x + 32, task_y + 2))
+            
+            # Due date if exists
+            if task.get('due'):
+                due = task['due'].get('string', '')[:10] if isinstance(task['due'], dict) else str(task['due'])[:10]
+                due_surf = self.fonts['status'].render(due, True, (120, 140, 170))
+                self.screen.blit(due_surf, (left_x + panel_w - due_surf.get_width() - 15, task_y + 4))
+            
+            task_y += 28
+        
+        if not urgent_tasks:
+            empty_surf = self.fonts['msg'].render("All clear!", True, (100, 180, 130))
+            self.screen.blit(empty_surf, (left_x + 22, panel_y + 50))
+        
+        # ─────────────────────────────────────────────────────────────
+        # RIGHT PANEL: Active Projects
+        # ─────────────────────────────────────────────────────────────
+        right_x = left_x + panel_w + panel_gap
+        
+        # Panel background
+        panel_surf2 = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        for py in range(panel_h):
+            alpha = 180 + int(20 * (py / panel_h))
+            panel_surf2.fill((25, 40, 50, alpha), (0, py, panel_w, 1))
+        self.screen.blit(panel_surf2, (right_x, panel_y))
+        pygame.draw.rect(self.screen, (60, 100, 100), (right_x, panel_y, panel_w, panel_h), width=1, border_radius=10)
         
         # Header
-        feed_title = self.fonts['status'].render("CHAT PREVIEW", True, (100, 130, 180))
-        self.screen.blit(feed_title, (28, feed_y + 12))
+        pygame.draw.rect(self.screen, (80, 200, 140), (right_x + 12, panel_y + 10, 3, 14), border_radius=1)
+        title_surf2 = self.fonts['status'].render("ACTIVE PROJECTS", True, (120, 220, 170))
+        self.screen.blit(title_surf2, (right_x + 22, panel_y + 10))
         
-        # Press C hint
-        hint_surf = self.fonts['status'].render("Press C to chat", True, (70, 90, 130))
-        self.screen.blit(hint_surf, (SCREEN_WIDTH - hint_surf.get_width() - 35, feed_y + 12))
+        # Get active kanban cards
+        active_cards = []
+        for col in ['Active', 'Stuck']:
+            for card in self.kanban_data.get(col, [])[:3]:
+                active_cards.append((col, card))
         
-        # Messages
-        if self.messages:
-            recent = list(self.messages)[-3:]
-            msg_y = feed_y + 35
-            for msg in recent:
-                if msg.role == 'system':
-                    continue
-                
-                is_user = msg.role == 'user'
-                dot_color = (100, 150, 255) if is_user else (100, 220, 160)
-                prefix = "You:" if is_user else "AI:"
-                
-                # Color bar
-                pygame.draw.rect(self.screen, dot_color, (28, msg_y + 2, 3, 16), border_radius=1)
-                
-                # Prefix
-                prefix_surf = self.fonts['status'].render(prefix, True, dot_color)
-                self.screen.blit(prefix_surf, (38, msg_y + 2))
-                
-                # Message text
-                text = msg.text[:65] + "..." if len(msg.text) > 65 else msg.text
-                text_surf = self.fonts['msg'].render(text, True, (190, 200, 220))
-                self.screen.blit(text_surf, (75, msg_y + 1))
-                
-                msg_y += 26
-        else:
-            empty_surf = self.fonts['msg'].render("No messages yet. Press C or F3 to start chatting.", True, (80, 100, 140))
-            self.screen.blit(empty_surf, (28, feed_y + 45))
+        card_y = panel_y + 32
+        for col_name, card in active_cards[:4]:
+            # Column indicator
+            col_color = (60, 180, 100) if col_name == 'Active' else (200, 70, 70)
+            pygame.draw.rect(self.screen, col_color, (right_x + 14, card_y + 3, 8, 14), border_radius=2)
+            
+            # Card title
+            title = card.get('title', '')[:26]
+            if len(card.get('title', '')) > 26:
+                title += '...'
+            title_surf = self.fonts['msg'].render(title, True, (220, 230, 245))
+            self.screen.blit(title_surf, (right_x + 30, card_y + 2))
+            
+            # Priority dot
+            priority = card.get('priority', '🟡')
+            p_color = (255, 90, 90) if priority in ['🔴', 'red'] else (255, 200, 80) if priority in ['🟡', 'yellow'] else (100, 200, 130)
+            pygame.draw.circle(self.screen, p_color, (right_x + panel_w - 20, card_y + 10), 4)
+            
+            card_y += 28
+        
+        if not active_cards:
+            empty_surf = self.fonts['msg'].render("No active projects", True, (100, 140, 160))
+            self.screen.blit(empty_surf, (right_x + 22, panel_y + 50))
         
         # ═══════════════════════════════════════════════════════════════
         # FOOTER - Simple navigation hints

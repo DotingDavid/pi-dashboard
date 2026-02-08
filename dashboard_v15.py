@@ -3790,6 +3790,7 @@ class DashboardApp:
     
     def _save_new_card(self):
         """Save new card to file"""
+        import re
         import uuid
         from datetime import datetime
         

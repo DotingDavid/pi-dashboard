@@ -3696,16 +3696,24 @@ class DashboardApp:
         self.screen.fill(C['bg'])
         self.draw_tabs()
         
-        if self.mode == MODE_DASHBOARD:
-            self.draw_dashboard()
-        elif self.mode == MODE_TASKS:
-            self.draw_tasks()
-        elif self.mode == MODE_CHAT:
-            self.draw_chat()
-        elif self.mode == MODE_COMMANDS:
-            self.draw_commands()
-        elif self.mode == MODE_KANBAN:
-            self.draw_kanban()
+        try:
+            if self.mode == MODE_DASHBOARD:
+                self.draw_dashboard()
+            elif self.mode == MODE_TASKS:
+                self.draw_tasks()
+            elif self.mode == MODE_CHAT:
+                self.draw_chat()
+            elif self.mode == MODE_COMMANDS:
+                self.draw_commands()
+            elif self.mode == MODE_KANBAN:
+                self.draw_kanban()
+        except Exception as e:
+            # Show error on screen instead of crashing
+            self.screen.fill((30, 20, 20))
+            err_surf = self.fonts['msg'].render(f"Error: {str(e)[:60]}", True, (255, 100, 100))
+            self.screen.blit(err_surf, (20, 200))
+            hint_surf = self.fonts['status'].render("Press any key to continue", True, (150, 150, 150))
+            self.screen.blit(hint_surf, (20, 240))
             
         pygame.display.flip()
         

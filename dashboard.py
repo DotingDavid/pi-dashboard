@@ -1311,6 +1311,62 @@ class DashboardApp:
             self.screen.blit(loading_surf, (clock_x + 15, weather_y + 14))
         
         # ═══════════════════════════════════════════════════════════════
+        # ANIMATED BUDDY - Little face that lives here
+        # ═══════════════════════════════════════════════════════════════
+        buddy_x = 380
+        buddy_y = 95
+        buddy_r = 28
+        
+        # Breathing animation
+        breathe = math.sin(self.home_anim * 2) * 2
+        
+        # Head - soft circle with glow
+        glow_alpha = int(40 + 20 * math.sin(self.home_anim * 1.5))
+        glow_surf = pygame.Surface((buddy_r*3, buddy_r*3), pygame.SRCALPHA)
+        pygame.draw.circle(glow_surf, (100, 150, 255, glow_alpha), (buddy_r*1.5, buddy_r*1.5), buddy_r + 8)
+        self.screen.blit(glow_surf, (buddy_x - buddy_r*1.5, buddy_y - buddy_r*1.5 + breathe))
+        
+        # Face background
+        pygame.draw.circle(self.screen, (35, 45, 65), (buddy_x, int(buddy_y + breathe)), buddy_r)
+        pygame.draw.circle(self.screen, (60, 80, 120), (buddy_x, int(buddy_y + breathe)), buddy_r, width=2)
+        
+        # Eyes - blink occasionally
+        blink_cycle = (self.home_anim * 0.5) % 4
+        eye_open = blink_cycle > 0.15  # Blink for 0.15 of cycle
+        
+        eye_y = int(buddy_y + breathe - 4)
+        left_eye_x = buddy_x - 9
+        right_eye_x = buddy_x + 9
+        
+        # Eye look direction (slowly wanders)
+        look_x = math.sin(self.home_anim * 0.3) * 3
+        look_y = math.cos(self.home_anim * 0.4) * 2
+        
+        if eye_open:
+            # Open eyes - cute dots that look around
+            pygame.draw.circle(self.screen, (180, 220, 255), (int(left_eye_x + look_x), int(eye_y + look_y)), 5)
+            pygame.draw.circle(self.screen, (180, 220, 255), (int(right_eye_x + look_x), int(eye_y + look_y)), 5)
+            # Pupils
+            pygame.draw.circle(self.screen, (40, 50, 70), (int(left_eye_x + look_x*1.5), int(eye_y + look_y*1.5)), 2)
+            pygame.draw.circle(self.screen, (40, 50, 70), (int(right_eye_x + look_x*1.5), int(eye_y + look_y*1.5)), 2)
+            # Sparkle
+            pygame.draw.circle(self.screen, (255, 255, 255), (int(left_eye_x + look_x - 1), int(eye_y + look_y - 2)), 1)
+            pygame.draw.circle(self.screen, (255, 255, 255), (int(right_eye_x + look_x - 1), int(eye_y + look_y - 2)), 1)
+        else:
+            # Closed eyes - happy lines
+            pygame.draw.line(self.screen, (180, 220, 255), (left_eye_x - 4, eye_y), (left_eye_x + 4, eye_y), 2)
+            pygame.draw.line(self.screen, (180, 220, 255), (right_eye_x - 4, eye_y), (right_eye_x + 4, eye_y), 2)
+        
+        # Mouth - changes with mood/time
+        mouth_y = int(buddy_y + breathe + 10)
+        smile_amount = 0.5 + 0.5 * math.sin(self.home_anim * 0.8)
+        
+        # Draw curved smile
+        for i in range(-6, 7):
+            curve = int(smile_amount * 4 * (1 - (i/6)**2))
+            pygame.draw.circle(self.screen, (140, 180, 230), (buddy_x + i, mouth_y + curve), 1)
+        
+        # ═══════════════════════════════════════════════════════════════
         # SYSTEM PANEL - Modern glass morphism
         # ═══════════════════════════════════════════════════════════════
         panel_x = 480

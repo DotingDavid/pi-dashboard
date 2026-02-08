@@ -3220,75 +3220,67 @@ class DashboardApp:
                         self.kanban_holding_from = self.kanban_col
             return
         
-        if self.kanban_in_fasttrack:
-            # Navigation in fast track row
-            if event.key == pygame.K_LEFT:
-                if self.kanban_holding:
-                    # Move between columns while in fast track
-                    if self.kanban_col > 0:
-                        self.kanban_col -= 1
-                elif self.kanban_ft_card > 0:
+        # LEFT/RIGHT - move between columns (works same in FT or main)
+        if event.key == pygame.K_LEFT:
+            if self.kanban_in_fasttrack and not self.kanban_holding:
+                if self.kanban_ft_card > 0:
                     self.kanban_ft_card -= 1
-            elif event.key == pygame.K_RIGHT:
-                if self.kanban_holding:
-                    if self.kanban_col < 6:
-                        self.kanban_col += 1
-                elif ft_cards and self.kanban_ft_card < len(ft_cards) - 1:
-                    self.kanban_ft_card += 1
-            elif event.key == pygame.K_DOWN:
-                if self.kanban_holding:
-                    # Drop card out of fast track (removes 🔥)
-                    self.kanban_in_fasttrack = False
-                    self._place_kanban_card()
-                    self.kanban_card = 0
-                else:
-                    # Exit fast track to columns
-                    self.kanban_in_fasttrack = False
-                    self.kanban_card = 0
-            elif event.key == pygame.K_RETURN:
-                if ft_cards and self.kanban_ft_card < len(ft_cards):
-                    self.kanban_detail = True
-        else:
-            # Navigation in columns
-            if event.key == pygame.K_LEFT:
+            else:
                 if self.kanban_col > 0:
                     self.kanban_col -= 1
                     if not self.kanban_holding:
                         self.kanban_card = 0
                         self.kanban_scroll[self.kanban_col] = 0
-            elif event.key == pygame.K_RIGHT:
+        
+        elif event.key == pygame.K_RIGHT:
+            if self.kanban_in_fasttrack and not self.kanban_holding:
+                if ft_cards and self.kanban_ft_card < len(ft_cards) - 1:
+                    self.kanban_ft_card += 1
+            else:
                 if self.kanban_col < 6:
                     self.kanban_col += 1
                     if not self.kanban_holding:
                         self.kanban_card = 0
                         self.kanban_scroll[self.kanban_col] = 0
-            elif event.key == pygame.K_UP:
-                if self.kanban_holding:
-                    # Holding a card - move to fast track and place
-                    self.kanban_in_fasttrack = True
-                    self._place_kanban_card()
-                    self.kanban_ft_card = 0
-                else:
-                    if self.kanban_card > 0:
-                        self.kanban_card -= 1
-                        scroll = self.kanban_scroll.get(self.kanban_col, 0)
-                        if self.kanban_card < scroll:
-                            self.kanban_scroll[self.kanban_col] = self.kanban_card
-                    elif self.kanban_card == 0:
-                        # Move to fast track row
-                        self.kanban_in_fasttrack = True
-                        self.kanban_ft_card = 0
-            elif event.key == pygame.K_DOWN:
-                if not self.kanban_holding and current_cards:
-                    max_idx = len(current_cards) - 1
-                    if self.kanban_card < max_idx:
-                        self.kanban_card += 1
-                        scroll = self.kanban_scroll.get(self.kanban_col, 0)
-                        max_visible = 6
-                        if self.kanban_card > scroll + max_visible - 1:
-                            self.kanban_scroll[self.kanban_col] = self.kanban_card - max_visible + 1
-            elif event.key == pygame.K_RETURN:
-                if not self.kanban_holding and current_cards:
+        
+        # UP - go to fast track row (or scroll up in column)
+        elif event.key == pygame.K_UP:
+            if self.kanban_in_fasttrack:
+                pass  # Already at top
+            elif self.kanban_holding:
+                # Move to fast track while holding
+                self.kanban_in_fasttrack = True
+            elif self.kanban_card > 0:
+                self.kanban_card -= 1
+                scroll = self.kanban_scroll.get(self.kanban_col, 0)
+                if self.kanban_card < scroll:
+                    self.kanban_scroll[self.kanban_col] = self.kanban_card
+            elif self.kanban_card == 0 and not self.kanban_holding:
+                # At top of column - move to fast track row
+                self.kanban_in_fasttrack = True
+                self.kanban_ft_card = 0
+        
+        # DOWN - go to columns (or scroll down)
+        elif event.key == pygame.K_DOWN:
+            if self.kanban_in_fasttrack:
+                # Exit fast track to columns
+                self.kanban_in_fasttrack = False
+                self.kanban_card = 0
+            elif not self.kanban_holding and current_cards:
+                max_idx = len(current_cards) - 1
+                if self.kanban_card < max_idx:
+                    self.kanban_card += 1
+                    scroll = self.kanban_scroll.get(self.kanban_col, 0)
+                    max_visible = 6
+                    if self.kanban_card > scroll + max_visible - 1:
+                        self.kanban_scroll[self.kanban_col] = self.kanban_card - max_visible + 1
+        
+        # ENTER - show detail
+        elif event.key == pygame.K_RETURN:
+            if not self.kanban_holding:
+                if self.kanban_in_fasttrack and ft_cards:
+                    self.kanban_detail = True
+                elif current_cards:
                     self.kanban_detail = True
         
         # Tab = switch boards (salon ↔ personal only, fast track is always visible)

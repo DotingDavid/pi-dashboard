@@ -235,6 +235,15 @@ class DashboardApp:
     def __init__(self):
         pygame.init()
         
+        # Enable key repeat (delay 400ms, repeat every 50ms)
+        pygame.key.set_repeat(400, 50)
+        
+        # Initialize clipboard
+        try:
+            pygame.scrap.init()
+        except:
+            pass  # Clipboard may not be available
+        
         self.screen = pygame.display.set_mode(
             (SCREEN_WIDTH, SCREEN_HEIGHT),
             pygame.FULLSCREEN | pygame.HWSURFACE | pygame.DOUBLEBUF
@@ -499,6 +508,46 @@ class DashboardApp:
             self.tasks[self.task_selected], self.tasks[new_idx] = self.tasks[new_idx], self.tasks[self.task_selected]
             self.task_selected = new_idx
             self.save_local_tasks()
+    
+    def _clipboard_copy(self, text):
+        """Copy text to clipboard"""
+        try:
+            # Try pygame scrap first
+            if pygame.scrap.get_init():
+                pygame.scrap.put(pygame.SCRAP_TEXT, text.encode('utf-8'))
+                return True
+        except:
+            pass
+        try:
+            # Fallback to xclip
+            import subprocess
+            p = subprocess.Popen(['xclip', '-selection', 'clipboard'], stdin=subprocess.PIPE)
+            p.communicate(text.encode('utf-8'))
+            return True
+        except:
+            pass
+        return False
+    
+    def _clipboard_paste(self):
+        """Get text from clipboard"""
+        try:
+            # Try pygame scrap first
+            if pygame.scrap.get_init():
+                data = pygame.scrap.get(pygame.SCRAP_TEXT)
+                if data:
+                    return data.decode('utf-8').rstrip('\x00')
+        except:
+            pass
+        try:
+            # Fallback to xclip
+            import subprocess
+            result = subprocess.run(['xclip', '-selection', 'clipboard', '-o'], 
+                                  capture_output=True, text=True, timeout=2)
+            if result.returncode == 0:
+                return result.stdout
+        except:
+            pass
+        return ""
         
     def load_weather(self):
         if self.weather_loading:
@@ -1878,7 +1927,7 @@ class DashboardApp:
         ft_cards_y = ft_y + 22
         
         # Use same column positions as main columns for alignment
-        finished_w = 55
+        finished_w = 45
         normal_w = (SCREEN_WIDTH - 20 - finished_w) // 6
         col_gap = 3
         
@@ -1934,7 +1983,7 @@ class DashboardApp:
         col_gap = 3
         
         # Finished column is narrow
-        finished_w = 55
+        finished_w = 45
         normal_w = (SCREEN_WIDTH - 20 - finished_w) // 6
         
         col_positions = []
@@ -3212,16 +3261,68 @@ class DashboardApp:
             return
         
         # Normal chat input (when menu is not open)
-        if event.key == pygame.K_RETURN:
+        ctrl = event.mod & pygame.KMOD_CTRL
+        
+        if ctrl and event.key == pygame.K_a:
+            # Select all - set selection range
+            self.chat_select_start = 0
+            self.chat_select_end = len(self.chat_input)
+            self.chat_cursor = len(self.chat_input)
+        elif ctrl and event.key == pygame.K_c:
+            # Copy
+            sel_start = getattr(self, 'chat_select_start', self.chat_cursor)
+            sel_end = getattr(self, 'chat_select_end', self.chat_cursor)
+            if sel_start != sel_end:
+                selected = self.chat_input[min(sel_start, sel_end):max(sel_start, sel_end)]
+                self._clipboard_copy(selected)
+        elif ctrl and event.key == pygame.K_x:
+            # Cut
+            sel_start = getattr(self, 'chat_select_start', self.chat_cursor)
+            sel_end = getattr(self, 'chat_select_end', self.chat_cursor)
+            if sel_start != sel_end:
+                selected = self.chat_input[min(sel_start, sel_end):max(sel_start, sel_end)]
+                self._clipboard_copy(selected)
+                self.chat_input = self.chat_input[:min(sel_start, sel_end)] + self.chat_input[max(sel_start, sel_end):]
+                self.chat_cursor = min(sel_start, sel_end)
+                self.chat_select_start = self.chat_cursor
+                self.chat_select_end = self.chat_cursor
+        elif ctrl and event.key == pygame.K_v:
+            # Paste
+            text = self._clipboard_paste()
+            if text:
+                # Delete selection if any
+                sel_start = getattr(self, 'chat_select_start', self.chat_cursor)
+                sel_end = getattr(self, 'chat_select_end', self.chat_cursor)
+                if sel_start != sel_end:
+                    self.chat_input = self.chat_input[:min(sel_start, sel_end)] + self.chat_input[max(sel_start, sel_end):]
+                    self.chat_cursor = min(sel_start, sel_end)
+                # Insert pasted text
+                self.chat_input = self.chat_input[:self.chat_cursor] + text + self.chat_input[self.chat_cursor:]
+                self.chat_cursor += len(text)
+                self.chat_select_start = self.chat_cursor
+                self.chat_select_end = self.chat_cursor
+        elif event.key == pygame.K_RETURN:
             self.chat_send_message()
         elif event.key == pygame.K_BACKSPACE:
-            if self.chat_cursor > 0:
+            # Check for selection first
+            sel_start = getattr(self, 'chat_select_start', self.chat_cursor)
+            sel_end = getattr(self, 'chat_select_end', self.chat_cursor)
+            if sel_start != sel_end:
+                self.chat_input = self.chat_input[:min(sel_start, sel_end)] + self.chat_input[max(sel_start, sel_end):]
+                self.chat_cursor = min(sel_start, sel_end)
+                self.chat_select_start = self.chat_cursor
+                self.chat_select_end = self.chat_cursor
+            elif self.chat_cursor > 0:
                 self.chat_input = self.chat_input[:self.chat_cursor-1] + self.chat_input[self.chat_cursor:]
                 self.chat_cursor -= 1
         elif event.key == pygame.K_LEFT:
             self.chat_cursor = max(0, self.chat_cursor - 1)
+            self.chat_select_start = self.chat_cursor
+            self.chat_select_end = self.chat_cursor
         elif event.key == pygame.K_RIGHT:
             self.chat_cursor = min(len(self.chat_input), self.chat_cursor + 1)
+            self.chat_select_start = self.chat_cursor
+            self.chat_select_end = self.chat_cursor
         elif event.key == pygame.K_UP:
             # Scroll up through history
             max_scroll = max(0, len(self.messages) - 3)
@@ -3232,6 +3333,8 @@ class DashboardApp:
         elif event.key == pygame.K_ESCAPE:
             self.chat_input = ""
             self.chat_cursor = 0
+            self.chat_select_start = 0
+            self.chat_select_end = 0
         elif event.key == pygame.K_TAB:
             self.chat_menu_open = True
             self.chat_menu_mode = 'sessions'
@@ -3239,8 +3342,16 @@ class DashboardApp:
             self.chat_menu_scroll = 0
             self._fetch_sessions()
         elif event.unicode and ord(event.unicode) >= 32:
+            # Delete selection if any before inserting
+            sel_start = getattr(self, 'chat_select_start', self.chat_cursor)
+            sel_end = getattr(self, 'chat_select_end', self.chat_cursor)
+            if sel_start != sel_end:
+                self.chat_input = self.chat_input[:min(sel_start, sel_end)] + self.chat_input[max(sel_start, sel_end):]
+                self.chat_cursor = min(sel_start, sel_end)
             self.chat_input = self.chat_input[:self.chat_cursor] + event.unicode + self.chat_input[self.chat_cursor:]
             self.chat_cursor += 1
+            self.chat_select_start = self.chat_cursor
+            self.chat_select_end = self.chat_cursor
             
     def _handle_rename_input(self, event):
         """Handle keyboard input for rename dialog"""

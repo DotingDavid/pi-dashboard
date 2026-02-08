@@ -1311,60 +1311,58 @@ class DashboardApp:
             self.screen.blit(loading_surf, (clock_x + 15, weather_y + 14))
         
         # ═══════════════════════════════════════════════════════════════
-        # ANIMATED BUDDY - Little face that lives here
+        # HEARTBEAT INDICATOR - Beating heart with countdown
         # ═══════════════════════════════════════════════════════════════
-        buddy_x = 380
-        buddy_y = 95
-        buddy_r = 28
+        heart_x = 420
+        heart_y = 85
         
-        # Breathing animation
-        breathe = math.sin(self.home_anim * 2) * 2
-        
-        # Head - soft circle with glow
-        glow_alpha = int(40 + 20 * math.sin(self.home_anim * 1.5))
-        glow_surf = pygame.Surface((buddy_r*3, buddy_r*3), pygame.SRCALPHA)
-        pygame.draw.circle(glow_surf, (100, 150, 255, glow_alpha), (buddy_r*1.5, buddy_r*1.5), buddy_r + 8)
-        self.screen.blit(glow_surf, (buddy_x - buddy_r*1.5, buddy_y - buddy_r*1.5 + breathe))
-        
-        # Face background
-        pygame.draw.circle(self.screen, (35, 45, 65), (buddy_x, int(buddy_y + breathe)), buddy_r)
-        pygame.draw.circle(self.screen, (60, 80, 120), (buddy_x, int(buddy_y + breathe)), buddy_r, width=2)
-        
-        # Eyes - blink occasionally
-        blink_cycle = (self.home_anim * 0.5) % 4
-        eye_open = blink_cycle > 0.15  # Blink for 0.15 of cycle
-        
-        eye_y = int(buddy_y + breathe - 4)
-        left_eye_x = buddy_x - 9
-        right_eye_x = buddy_x + 9
-        
-        # Eye look direction (slowly wanders)
-        look_x = math.sin(self.home_anim * 0.3) * 3
-        look_y = math.cos(self.home_anim * 0.4) * 2
-        
-        if eye_open:
-            # Open eyes - cute dots that look around
-            pygame.draw.circle(self.screen, (180, 220, 255), (int(left_eye_x + look_x), int(eye_y + look_y)), 5)
-            pygame.draw.circle(self.screen, (180, 220, 255), (int(right_eye_x + look_x), int(eye_y + look_y)), 5)
-            # Pupils
-            pygame.draw.circle(self.screen, (40, 50, 70), (int(left_eye_x + look_x*1.5), int(eye_y + look_y*1.5)), 2)
-            pygame.draw.circle(self.screen, (40, 50, 70), (int(right_eye_x + look_x*1.5), int(eye_y + look_y*1.5)), 2)
-            # Sparkle
-            pygame.draw.circle(self.screen, (255, 255, 255), (int(left_eye_x + look_x - 1), int(eye_y + look_y - 2)), 1)
-            pygame.draw.circle(self.screen, (255, 255, 255), (int(right_eye_x + look_x - 1), int(eye_y + look_y - 2)), 1)
+        # Heartbeat animation - quick pulse then rest
+        beat_cycle = (self.home_anim * 1.2) % 1.0
+        if beat_cycle < 0.1:
+            scale = 1.0 + 0.3 * (1 - beat_cycle / 0.1)
+        elif beat_cycle < 0.25:
+            scale = 1.0 + 0.15 * (1 - (beat_cycle - 0.1) / 0.15)
         else:
-            # Closed eyes - happy lines
-            pygame.draw.line(self.screen, (180, 220, 255), (left_eye_x - 4, eye_y), (left_eye_x + 4, eye_y), 2)
-            pygame.draw.line(self.screen, (180, 220, 255), (right_eye_x - 4, eye_y), (right_eye_x + 4, eye_y), 2)
+            scale = 1.0
         
-        # Mouth - changes with mood/time
-        mouth_y = int(buddy_y + breathe + 10)
-        smile_amount = 0.5 + 0.5 * math.sin(self.home_anim * 0.8)
+        # Heart glow
+        glow_alpha = int(30 + 40 * (scale - 1.0) * 3)
+        glow_surf = pygame.Surface((80, 80), pygame.SRCALPHA)
+        pygame.draw.circle(glow_surf, (255, 80, 100, glow_alpha), (40, 40), int(30 * scale))
+        self.screen.blit(glow_surf, (heart_x - 40, heart_y - 40))
         
-        # Draw curved smile
-        for i in range(-6, 7):
-            curve = int(smile_amount * 4 * (1 - (i/6)**2))
-            pygame.draw.circle(self.screen, (140, 180, 230), (buddy_x + i, mouth_y + curve), 1)
+        # Draw heart shape
+        s = int(18 * scale)
+        heart_color = (255, 70, 90)
+        # Left bump
+        pygame.draw.circle(self.screen, heart_color, (heart_x - s//2, heart_y - s//4), s//2 + 2)
+        # Right bump  
+        pygame.draw.circle(self.screen, heart_color, (heart_x + s//2, heart_y - s//4), s//2 + 2)
+        # Bottom triangle
+        points = [
+            (heart_x - s - 2, heart_y - s//4 + 2),
+            (heart_x + s + 2, heart_y - s//4 + 2),
+            (heart_x, heart_y + s)
+        ]
+        pygame.draw.polygon(self.screen, heart_color, points)
+        
+        # Shine on heart
+        pygame.draw.circle(self.screen, (255, 150, 160), (heart_x - s//3, heart_y - s//3), 3)
+        
+        # Calculate time to next heartbeat (every 30 min from top of hour)
+        now_ts = now.minute * 60 + now.second
+        if now_ts < 30 * 60:
+            next_hb = 30 * 60 - now_ts
+        else:
+            next_hb = 60 * 60 - now_ts
+        
+        mins_left = next_hb // 60
+        secs_left = next_hb % 60
+        
+        # Countdown text
+        countdown_text = f"{mins_left}:{secs_left:02d}"
+        countdown_surf = self.fonts['status'].render(countdown_text, True, (180, 100, 120))
+        self.screen.blit(countdown_surf, (heart_x - countdown_surf.get_width()//2, heart_y + 28))
         
         # ═══════════════════════════════════════════════════════════════
         # SYSTEM PANEL - Modern glass morphism

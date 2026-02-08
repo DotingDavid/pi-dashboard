@@ -1733,15 +1733,16 @@ class DashboardApp:
             pygame.draw.line(self.screen, (r, g, b), (0, y), (SCREEN_WIDTH, y))
         
         # ═══════════════════════════════════════════════════════════════
-        # HEADER - Clean board tabs
+        # HEADER - Board tabs with breathing room
         # ═══════════════════════════════════════════════════════════════
-        header_y = 44
+        header_y = 46
+        header_h = 34
         
-        # Glass header bar
-        header_surf = pygame.Surface((SCREEN_WIDTH - 20, 28), pygame.SRCALPHA)
+        # Glass header bar - taller
+        header_surf = pygame.Surface((SCREEN_WIDTH - 20, header_h), pygame.SRCALPHA)
         header_surf.fill((30, 32, 45, 180))
-        self.screen.blit(header_surf, (10, header_y - 4))
-        pygame.draw.rect(self.screen, (50, 55, 70), (10, header_y - 4, SCREEN_WIDTH - 20, 28), width=1, border_radius=6)
+        self.screen.blit(header_surf, (10, header_y - 6))
+        pygame.draw.rect(self.screen, (50, 55, 70), (10, header_y - 6, SCREEN_WIDTH - 20, header_h), width=1, border_radius=8)
         
         boards = [
             ('salon', 'Salon', (100, 150, 220)),
@@ -1760,10 +1761,10 @@ class DashboardApp:
                 display_color = board_color if is_active else (90, 95, 115)
             
             tab_surf = self.fonts['msg'].render(board_name, True, display_color)
-            self.screen.blit(tab_surf, (tab_x, header_y + 2))
+            self.screen.blit(tab_surf, (tab_x, header_y + 4))
             
             if is_active:
-                pygame.draw.rect(self.screen, display_color, (tab_x, header_y + 20, tab_surf.get_width(), 2), border_radius=1)
+                pygame.draw.rect(self.screen, display_color, (tab_x, header_y + 22, tab_surf.get_width(), 2), border_radius=1)
             
             tab_x += tab_surf.get_width() + 25
         
@@ -1780,18 +1781,33 @@ class DashboardApp:
         self.screen.blit(sync_surf, (SCREEN_WIDTH - sync_surf.get_width() - 20, header_y + 4))
         
         # ═══════════════════════════════════════════════════════════════
-        # COLUMNS - All 7 in one row (no progress bar - more space for cards)
+        # COLUMNS - 6 normal + 1 narrow Finished column
         # ═══════════════════════════════════════════════════════════════
-        cols_y = header_y + 28
-        cols_h = SCREEN_HEIGHT - cols_y - 26
-        col_w = (SCREEN_WIDTH - 24) // 7
+        cols_y = header_y + header_h + 4
+        cols_h = SCREEN_HEIGHT - cols_y - 24
         col_gap = 3
         
+        # Finished column is half width, others share remaining space
+        finished_w = 55
+        normal_w = (SCREEN_WIDTH - 20 - finished_w) // 6
+        
+        # Calculate column positions and widths
+        col_positions = []
+        current_x = 10
+        for i, col_name in enumerate(all_columns):
+            if col_name == 'Finished':
+                w = finished_w
+            else:
+                w = normal_w
+            col_positions.append((current_x, w))
+            current_x += w + col_gap
+        
         for col_idx, col_name in enumerate(all_columns):
-            col_x = 12 + col_idx * col_w
+            col_x, col_w = col_positions[col_idx]
             is_selected_col = col_idx == self.kanban_col
             col_color = col_colors[col_name]
             cards = self._get_kanban_column_cards(col_name)
+            is_finished = col_name == 'Finished'
             
             # Selected column glow
             if is_selected_col:
@@ -1803,91 +1819,103 @@ class DashboardApp:
             bg_color = (32, 35, 48) if is_selected_col else (24, 27, 38)
             pygame.draw.rect(self.screen, bg_color, (col_x, cols_y, col_w - col_gap, cols_h), border_radius=8)
             
-            # Column header with gradient
-            header_h = 32
-            pygame.draw.rect(self.screen, col_color, (col_x, cols_y, col_w - col_gap, header_h), border_top_left_radius=8, border_top_right_radius=8)
+            # Column header
+            col_header_h = 28
+            pygame.draw.rect(self.screen, col_color, (col_x, cols_y, col_w - col_gap, col_header_h), border_top_left_radius=8, border_top_right_radius=8)
             
-            # Icon + Count
-            icon = col_icons[col_name]
-            icon_surf = self.fonts['msg'].render(icon, True, (255, 255, 255))
-            self.screen.blit(icon_surf, (col_x + 8, cols_y + 7))
+            # Icon + Count (or just count for narrow Finished)
+            if is_finished:
+                # Finished column - just show checkmark and count
+                count_text = f"✓{len(cards)}"
+                count_surf = self.fonts['status'].render(count_text, True, (255, 255, 255))
+                self.screen.blit(count_surf, (col_x + (col_w - col_gap) // 2 - count_surf.get_width() // 2, cols_y + 6))
+            else:
+                icon = col_icons[col_name]
+                icon_surf = self.fonts['msg'].render(icon, True, (255, 255, 255))
+                self.screen.blit(icon_surf, (col_x + 6, cols_y + 5))
+                
+                count_surf = self.fonts['msg'].render(str(len(cards)), True, (255, 255, 255))
+                self.screen.blit(count_surf, (col_x + col_w - col_gap - count_surf.get_width() - 6, cols_y + 5))
             
-            count_surf = self.fonts['msg'].render(str(len(cards)), True, (255, 255, 255))
-            self.screen.blit(count_surf, (col_x + col_w - col_gap - count_surf.get_width() - 8, cols_y + 7))
-            
-            # Cards - 2-line cards for better readability
-            cards_y = cols_y + header_h + 4
-            card_h = 44  # Taller for 2 lines
-            card_gap = 3
-            available_h = cols_h - header_h - 8
-            max_visible = available_h // (card_h + card_gap)
+            # Cards
+            cards_y = cols_y + col_header_h + 3
+            card_h = 20 if is_finished else 44  # Finished cards are tiny
+            card_gap_inner = 2 if is_finished else 3
+            available_h = cols_h - col_header_h - 6
+            max_visible = available_h // (card_h + card_gap_inner)
             
             scroll = self.kanban_scroll.get(col_idx, 0)
             visible_cards = cards[scroll:scroll + max_visible]
             
             if not cards:
                 empty_surf = self.fonts['status'].render("—", True, (50, 55, 70))
-                self.screen.blit(empty_surf, (col_x + (col_w - col_gap) // 2 - 4, cards_y + 30))
+                self.screen.blit(empty_surf, (col_x + (col_w - col_gap) // 2 - 4, cards_y + 20))
             
             for card_idx, card in enumerate(visible_cards):
                 actual_idx = scroll + card_idx
                 is_selected_card = is_selected_col and actual_idx == self.kanban_card
-                card_y_pos = cards_y + card_idx * (card_h + card_gap)
+                card_y_pos = cards_y + card_idx * (card_h + card_gap_inner)
                 
                 is_fast = '🔥' in card.get('title', '') or card.get('fast_track', False)
                 
-                # Card background
-                if is_selected_card:
-                    pygame.draw.rect(self.screen, (55, 60, 80), (col_x + 3, card_y_pos, col_w - col_gap - 6, card_h), border_radius=5)
-                    pygame.draw.rect(self.screen, col_color, (col_x + 3, card_y_pos, col_w - col_gap - 6, card_h), border_radius=5, width=2)
-                elif is_fast:
-                    pulse = 0.7 + 0.3 * math.sin(self.kanban_anim * 5)
-                    pygame.draw.rect(self.screen, (int(55 * pulse), int(35 * pulse), int(35 * pulse)), (col_x + 3, card_y_pos, col_w - col_gap - 6, card_h), border_radius=5)
-                    pygame.draw.rect(self.screen, (180, 60, 60), (col_x + 3, card_y_pos, 3, card_h), border_top_left_radius=5, border_bottom_left_radius=5)
+                if is_finished:
+                    # Finished column - minimal cards, just a checkmark
+                    if is_selected_card:
+                        pygame.draw.rect(self.screen, (50, 70, 55), (col_x + 2, card_y_pos, col_w - col_gap - 4, card_h), border_radius=4)
+                        pygame.draw.rect(self.screen, col_color, (col_x + 2, card_y_pos, col_w - col_gap - 4, card_h), border_radius=4, width=1)
+                    else:
+                        pygame.draw.rect(self.screen, (35, 50, 40), (col_x + 2, card_y_pos, col_w - col_gap - 4, card_h), border_radius=4)
+                    
+                    # Just a checkmark
+                    check_color = (100, 200, 120) if is_selected_card else (70, 140, 90)
+                    check_surf = self.fonts['status'].render('✓', True, check_color)
+                    self.screen.blit(check_surf, (col_x + (col_w - col_gap) // 2 - check_surf.get_width() // 2, card_y_pos + 3))
                 else:
-                    pygame.draw.rect(self.screen, (38, 42, 55), (col_x + 3, card_y_pos, col_w - col_gap - 6, card_h), border_radius=5)
-                
-                # Priority bar on left (if not fast track)
-                priority = card.get('priority', 'green')
-                p_colors = {'red': (200, 60, 60), 'yellow': (200, 160, 40), 'green': (60, 160, 90)}
-                if not is_fast:
-                    pygame.draw.rect(self.screen, p_colors.get(priority, p_colors['green']), 
-                                   (col_x + 3, card_y_pos, 3, card_h), border_top_left_radius=5, border_bottom_left_radius=5)
-                
-                # Card title - 2 lines with word wrap
-                title = card.get('title', 'Untitled').lstrip('🔥').strip()
-                text_x = col_x + 9
-                text_y = card_y_pos + 5
-                
-                # Fire icon for fast track
-                if is_fast:
-                    fire_pulse = 0.8 + 0.2 * math.sin(self.kanban_anim * 6 + card_idx)
-                    fire_surf = self.fonts['status'].render('🔥', True, (int(255 * fire_pulse), int(120 * fire_pulse), 50))
-                    self.screen.blit(fire_surf, (text_x, text_y))
-                    text_x += 12
-                
-                title_color = (235, 240, 255) if is_selected_card else (175, 180, 200)
-                max_chars_per_line = 10
-                
-                # Line 1
-                line1 = title[:max_chars_per_line]
-                line1_surf = self.fonts['status'].render(line1, True, title_color)
-                self.screen.blit(line1_surf, (text_x, text_y))
-                
-                # Line 2 if needed
-                if len(title) > max_chars_per_line:
-                    line2 = title[max_chars_per_line:max_chars_per_line*2]
-                    if len(title) > max_chars_per_line * 2:
-                        line2 = line2[:-1] + '…'
-                    line2_surf = self.fonts['status'].render(line2, True, title_color)
-                    self.screen.blit(line2_surf, (col_x + 9, text_y + 14))
-                
-                # Priority indicator
-                priority = card.get('priority', 'green')
-                p_colors = {'red': (200, 60, 60), 'yellow': (200, 160, 40), 'green': (60, 160, 90)}
-                if not is_fast:
-                    pygame.draw.rect(self.screen, p_colors.get(priority, p_colors['green']), 
-                                   (col_x + 4, card_y_pos, 3, card_h), border_top_left_radius=6, border_bottom_left_radius=6)
+                    # Normal card rendering
+                    if is_selected_card:
+                        pygame.draw.rect(self.screen, (55, 60, 80), (col_x + 3, card_y_pos, col_w - col_gap - 6, card_h), border_radius=5)
+                        pygame.draw.rect(self.screen, col_color, (col_x + 3, card_y_pos, col_w - col_gap - 6, card_h), border_radius=5, width=2)
+                    elif is_fast:
+                        pulse = 0.7 + 0.3 * math.sin(self.kanban_anim * 5)
+                        pygame.draw.rect(self.screen, (int(55 * pulse), int(35 * pulse), int(35 * pulse)), (col_x + 3, card_y_pos, col_w - col_gap - 6, card_h), border_radius=5)
+                        pygame.draw.rect(self.screen, (180, 60, 60), (col_x + 3, card_y_pos, 3, card_h), border_top_left_radius=5, border_bottom_left_radius=5)
+                    else:
+                        pygame.draw.rect(self.screen, (38, 42, 55), (col_x + 3, card_y_pos, col_w - col_gap - 6, card_h), border_radius=5)
+                    
+                    # Priority bar on left (if not fast track)
+                    priority = card.get('priority', 'green')
+                    p_colors = {'red': (200, 60, 60), 'yellow': (200, 160, 40), 'green': (60, 160, 90)}
+                    if not is_fast:
+                        pygame.draw.rect(self.screen, p_colors.get(priority, p_colors['green']), 
+                                       (col_x + 3, card_y_pos, 3, card_h), border_top_left_radius=5, border_bottom_left_radius=5)
+                    
+                    # Card title - 2 lines with word wrap
+                    title = card.get('title', 'Untitled').lstrip('🔥').strip()
+                    text_x = col_x + 9
+                    text_y = card_y_pos + 5
+                    
+                    # Fire icon for fast track
+                    if is_fast:
+                        fire_pulse = 0.8 + 0.2 * math.sin(self.kanban_anim * 6 + card_idx)
+                        fire_surf = self.fonts['status'].render('🔥', True, (int(255 * fire_pulse), int(120 * fire_pulse), 50))
+                        self.screen.blit(fire_surf, (text_x, text_y))
+                        text_x += 12
+                    
+                    title_color = (235, 240, 255) if is_selected_card else (175, 180, 200)
+                    max_chars_per_line = 11
+                    
+                    # Line 1
+                    line1 = title[:max_chars_per_line]
+                    line1_surf = self.fonts['status'].render(line1, True, title_color)
+                    self.screen.blit(line1_surf, (text_x, text_y))
+                    
+                    # Line 2 if needed
+                    if len(title) > max_chars_per_line:
+                        line2 = title[max_chars_per_line:max_chars_per_line*2]
+                        if len(title) > max_chars_per_line * 2:
+                            line2 = line2[:-1] + '…'
+                        line2_surf = self.fonts['status'].render(line2, True, title_color)
+                        self.screen.blit(line2_surf, (col_x + 9, text_y + 14))
             
             # Scroll indicators
             if scroll > 0:

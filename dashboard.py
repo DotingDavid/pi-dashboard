@@ -434,8 +434,8 @@ class DashboardApp:
         """Update/rename a task in Todoist"""
         try:
             self.todoist_sync_status = 'syncing'
-            # Use todoist modify command
-            cmd = ['todoist', 'modify', str(task_id), '--content', new_content]
+            # Use todoist update command
+            cmd = ['todoist', 'update', str(task_id), '--content', new_content]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
             if result.returncode == 0:
                 self.todoist_sync_status = 'live'

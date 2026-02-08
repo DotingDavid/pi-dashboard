@@ -481,7 +481,17 @@ class DashboardApp:
                 self.task_selected = len(self.tasks) - 1
                 
     def toggle_task_done(self):
-        """Complete task in Todoist"""
+        """Complete task in Todoist (with rate limiting to prevent accidents)"""
+        # Rate limit: minimum 2 seconds between completions
+        if not hasattr(self, '_last_complete_time'):
+            self._last_complete_time = 0
+        
+        now = time.time()
+        if now - self._last_complete_time < 2.0:
+            return  # Too fast, ignore
+        
+        self._last_complete_time = now
+        
         if self.tasks and 0 <= self.task_selected < len(self.tasks):
             task = self.tasks[self.task_selected]
             task_id = task.get('id')

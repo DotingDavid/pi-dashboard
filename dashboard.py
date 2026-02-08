@@ -1955,11 +1955,12 @@ class DashboardApp:
                     else:
                         pygame.draw.rect(self.screen, (38, 42, 55), (col_x + 2, card_y_pos, col_w - col_gap - 4, card_h), border_radius=4)
                     
-                    # Priority bar
-                    priority = card.get('priority', 'green')
-                    p_colors = {'red': (200, 60, 60), 'yellow': (200, 160, 40), 'green': (60, 160, 90)}
+                    # Priority bar (emoji → color)
+                    priority = card.get('priority', '🟢')
+                    p_colors = {'🔴': (220, 70, 70), '🟡': (220, 180, 50), '🟢': (70, 180, 100)}
+                    bar_color = p_colors.get(priority, (70, 180, 100))
                     if not is_fast:
-                        pygame.draw.rect(self.screen, p_colors.get(priority, p_colors['green']), 
+                        pygame.draw.rect(self.screen, bar_color, 
                                        (col_x + 2, card_y_pos, 3, card_h), border_top_left_radius=4, border_bottom_left_radius=4)
                     
                     # Title - 2 lines

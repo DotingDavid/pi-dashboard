@@ -2052,16 +2052,20 @@ class DashboardApp:
         if getattr(self, 'kanban_new_card_mode', False):
             self._draw_new_card_form()
         
+        # Delete confirmation
+        if getattr(self, 'kanban_delete_mode', False):
+            self._draw_delete_confirm()
+        
         # Footer hints
         footer_y = SCREEN_HEIGHT - 14
         if hasattr(self, 'kanban_holding') and self.kanban_holding:
             hint = "←→ Move  •  Space Drop  •  Esc Cancel"
             hint_color = (220, 180, 80)
         elif self.kanban_in_fasttrack:
-            hint = "←→ Card  •  ↓ Cols  •  Space Grab  •  P Priority  •  / Search  •  N New"
+            hint = "←→ Card  •  ↓ Cols  •  Space Grab  •  P Pri  •  N New  •  D Del  •  / Search"
             hint_color = (255, 150, 120)
         else:
-            hint = "Arrows Nav  •  Space Grab  •  P Priority  •  / Search  •  N New  •  Tab Board"
+            hint = "Arrows  •  Space Grab  •  P Pri  •  N New  •  D Del  •  / Search  •  Tab Board"
             hint_color = (90, 95, 115)
         hint_surf = self.fonts['status'].render(hint, True, hint_color)
         self.screen.blit(hint_surf, ((SCREEN_WIDTH - hint_surf.get_width())//2, footer_y))
@@ -2264,6 +2268,61 @@ class DashboardApp:
         # Hint
         hint_surf = self.fonts['status'].render("Tab Fields • Arrows Priority • 1/2/3 Quick • Enter Save • Esc Cancel", True, (100, 105, 125))
         self.screen.blit(hint_surf, (box_x + (box_w - hint_surf.get_width()) // 2, box_y + box_h - 22))
+    
+    def _draw_delete_confirm(self):
+        """Draw delete confirmation - must type 'Yes delete my project'"""
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 200))
+        self.screen.blit(overlay, (0, 0))
+        
+        box_w, box_h = 480, 180
+        box_x = (SCREEN_WIDTH - box_w) // 2
+        box_y = (SCREEN_HEIGHT - box_h) // 2
+        
+        # Red warning box
+        pygame.draw.rect(self.screen, (50, 30, 30), (box_x, box_y, box_w, box_h), border_radius=10)
+        pygame.draw.rect(self.screen, (200, 60, 60), (box_x, box_y, box_w, box_h), width=2, border_radius=10)
+        
+        # Warning title
+        title_surf = self.fonts['msg'].render("DELETE PROJECT?", True, (255, 100, 100))
+        self.screen.blit(title_surf, (box_x + (box_w - title_surf.get_width()) // 2, box_y + 15))
+        
+        # Card name
+        card = getattr(self, 'kanban_delete_card', None)
+        card_name = card.get('title', 'Unknown')[:35] if card else 'Unknown'
+        name_surf = self.fonts['status'].render(f'"{card_name}"', True, (200, 180, 180))
+        self.screen.blit(name_surf, (box_x + (box_w - name_surf.get_width()) // 2, box_y + 45))
+        
+        # Instruction
+        inst_surf = self.fonts['status'].render("Type: Yes delete my project", True, (180, 150, 150))
+        self.screen.blit(inst_surf, (box_x + (box_w - inst_surf.get_width()) // 2, box_y + 75))
+        
+        # Input box
+        input_y = box_y + 100
+        input_w = 300
+        input_x = box_x + (box_w - input_w) // 2
+        pygame.draw.rect(self.screen, (60, 40, 40), (input_x, input_y, input_w, 32), border_radius=6)
+        pygame.draw.rect(self.screen, (180, 80, 80), (input_x, input_y, input_w, 32), width=1, border_radius=6)
+        
+        # Typed text
+        typed = getattr(self, 'kanban_delete_text', '')
+        display = typed + '_'
+        
+        # Color based on match progress
+        target = "yes delete my project"
+        if typed.lower() == target:
+            text_color = (100, 255, 100)  # Green - match!
+        elif target.startswith(typed.lower()):
+            text_color = (255, 220, 150)  # Yellow - partial match
+        else:
+            text_color = (255, 100, 100)  # Red - wrong
+        
+        text_surf = self.fonts['status'].render(display[:30], True, text_color)
+        self.screen.blit(text_surf, (input_x + 10, input_y + 8))
+        
+        # Hint
+        hint_surf = self.fonts['status'].render("Enter to confirm • Esc to cancel", True, (120, 100, 100))
+        self.screen.blit(hint_surf, (box_x + (box_w - hint_surf.get_width()) // 2, box_y + box_h - 25))
     
     def _get_kanban_column_cards(self, col_name):
         """Get cards for a column"""
@@ -3464,6 +3523,11 @@ class DashboardApp:
             self._handle_new_card_key(event)
             return
         
+        # Handle delete confirmation
+        if getattr(self, 'kanban_delete_mode', False):
+            self._handle_delete_key(event)
+            return
+        
         # Space = pick up or place card
         if event.key == pygame.K_SPACE:
             if self.kanban_holding:
@@ -3577,13 +3641,22 @@ class DashboardApp:
         
         # N = new card
         elif event.key == pygame.K_n:
-            if not self.kanban_holding:
+            if not getattr(self, 'kanban_holding', None):
                 self.kanban_new_card_mode = True
                 self.kanban_new_title = ''
                 self.kanban_new_desc = ''
                 self.kanban_new_context = '@salon'
                 self.kanban_new_priority = '🟡'
                 self.kanban_new_field = 0
+        
+        # D = delete card
+        elif event.key == pygame.K_d:
+            if not getattr(self, 'kanban_holding', None):
+                card = self._get_selected_card()
+                if card:
+                    self.kanban_delete_mode = True
+                    self.kanban_delete_card = card
+                    self.kanban_delete_text = ''
         
         # Escape = cancel hold or go home
         elif event.key == pygame.K_ESCAPE:
@@ -3923,6 +3996,59 @@ class DashboardApp:
             pass
         
         self.kanban_new_card_mode = False
+    
+    def _handle_delete_key(self, event):
+        """Handle keyboard input in delete confirmation"""
+        if event.key == pygame.K_ESCAPE:
+            self.kanban_delete_mode = False
+            self.kanban_delete_text = ''
+        elif event.key == pygame.K_RETURN:
+            # Check if typed text matches
+            typed = getattr(self, 'kanban_delete_text', '')
+            if typed.lower() == "yes delete my project":
+                self._delete_card()
+            # If wrong, just close (no delete)
+            self.kanban_delete_mode = False
+            self.kanban_delete_text = ''
+        elif event.key == pygame.K_BACKSPACE:
+            self.kanban_delete_text = getattr(self, 'kanban_delete_text', '')[:-1]
+        elif event.unicode and event.unicode.isprintable():
+            self.kanban_delete_text = getattr(self, 'kanban_delete_text', '') + event.unicode
+    
+    def _delete_card(self):
+        """Delete the selected card from the file"""
+        import re
+        
+        card = getattr(self, 'kanban_delete_card', None)
+        if not card:
+            return
+        
+        card_title = card.get('title', '')
+        board_name = getattr(self, 'kanban_board', 'salon')
+        kanban_file = Path.home() / f'.openclaw/workspace/work/kanban/{board_name}.md'
+        
+        try:
+            content = kanban_file.read_text()
+            
+            # Find and remove the card block
+            pattern = rf'## {re.escape(card_title)}.*?(?=\n## |\n### |\Z)'
+            match = re.search(pattern, content, re.DOTALL)
+            
+            if match:
+                # Remove the card block
+                content = content.replace(match.group(0), '', 1)
+                
+                # Clean up extra separators and blank lines
+                content = re.sub(r'\n{3,}', '\n\n', content)
+                content = re.sub(r'(---\n)+---', '---', content)
+                
+                kanban_file.write_text(content)
+                self._load_kanban_data()
+                
+                # Reset selection
+                self.kanban_card = 0
+        except Exception:
+            pass
             
     def run(self):
         running = True

@@ -3401,18 +3401,9 @@ class DashboardApp:
             self.chat_anim = 0
         self.chat_anim += 0.03
         
-        y_start = 38
+        y_start = 44
         
-        # Animated gradient background
-        for y in range(y_start, SCREEN_HEIGHT):
-            progress = (y - y_start) / (SCREEN_HEIGHT - y_start)
-            wave = math.sin(self.chat_anim * 0.5 + progress * 2) * 3
-            r = int(16 + wave)
-            g = int(20 + progress * 4 + wave)
-            b = int(32 + progress * 8)
-            pygame.draw.line(self.screen, (max(0,r), max(0,g), min(50,b)), (0, y), (SCREEN_WIDTH, y))
-        
-        # Session indicator with glow
+        # Session indicator with glow - moved down a bit
         display_name = self.settings.session_renames.get(self.settings.session_key, self.settings.session_key)
         session_text = f"Session: {display_name}"
         
@@ -3446,14 +3437,14 @@ class DashboardApp:
                 break
             y = new_y
             
-        # Thinking indicator - animated dots
+        # Thinking indicator - animated dots (bottom right, out of way)
         if self.chat_waiting:
-            think_x = 20
+            think_x = SCREEN_WIDTH - 60
+            think_y = input_y - 20
             for i in range(3):
                 phase = self.chat_anim * 4 + i * 0.5
-                bounce = abs(math.sin(phase)) * 6
-                alpha = int(150 + 100 * math.sin(phase))
-                pygame.draw.circle(self.screen, (100, 180, 255), (think_x + i * 12, int(msg_bottom - 15 - bounce)), 4)
+                bounce = abs(math.sin(phase)) * 5
+                pygame.draw.circle(self.screen, (100, 180, 255), (think_x + i * 12, int(think_y - bounce)), 4)
             
         # Scroll indicator
         if self.chat_scroll > 0:
@@ -3469,8 +3460,9 @@ class DashboardApp:
         input_surf.fill((25, 35, 55, 200))
         self.screen.blit(input_surf, (10, input_y))
         
-        # Border with accent when typing
-        border_color = (80, 140, 220) if self.chat_input else (50, 65, 90)
+        # Border with accent when typing or focused
+        is_active = self.chat_input or getattr(self, 'chat_focused', False)
+        border_color = (80, 140, 220) if is_active else (50, 65, 90)
         pygame.draw.rect(self.screen, border_color, (10, input_y, SCREEN_WIDTH - 20, 48), width=1, border_radius=12)
         
         # Input with scrolling
@@ -3497,13 +3489,14 @@ class DashboardApp:
                     display_text = display_text[offset:]
                     cursor_pos = cursor_pos - offset
         
-        display = display_text or ("..." if self.chat_waiting else "Type a message...")
-        color = (220, 230, 245) if self.chat_input else (100, 115, 140)
+        is_focused = getattr(self, 'chat_focused', False)
+        display = display_text or ("..." if self.chat_waiting else ("" if is_focused else "Type a message..."))
+        color = (220, 230, 245) if (self.chat_input or is_focused) else (100, 115, 140)
         surf = self.fonts['input'].render(display, True, color)
         self.screen.blit(surf, (22, input_y + 14))
         
-        # Animated cursor
-        if self.chat_input and not self.chat_waiting:
+        # Animated cursor - show when focused OR has input
+        if (self.chat_input or is_focused) and not self.chat_waiting:
             cursor_blink = math.sin(self.chat_anim * 5) > 0
             if cursor_blink:
                 cx = 22 + self.fonts['input'].size(display_text[:cursor_pos])[0]
@@ -4009,7 +4002,11 @@ class DashboardApp:
                 self.chat_select_start = self.chat_cursor
                 self.chat_select_end = self.chat_cursor
         elif event.key == pygame.K_RETURN:
-            self.chat_send_message()
+            if self.chat_input.strip():
+                self.chat_send_message()
+            else:
+                # Focus the input (show cursor)
+                self.chat_focused = True
         elif event.key == pygame.K_BACKSPACE:
             # Check for selection first
             sel_start = getattr(self, 'chat_select_start', self.chat_cursor)
@@ -4042,6 +4039,7 @@ class DashboardApp:
             self.chat_cursor = 0
             self.chat_select_start = 0
             self.chat_select_end = 0
+            self.chat_focused = False
         elif event.key == pygame.K_TAB:
             self.chat_menu_open = True
             self.chat_menu_mode = 'sessions'

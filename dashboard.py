@@ -854,6 +854,42 @@ class DashboardApp:
         elif command == '/status':
             self.messages.append(Message(f"Session: {self.settings.session_key}\nMsgs: {len(self.conversation)}", 'system'))
             return True
+        elif command == '/home':
+            self.mode = 0
+            return True
+        elif command == '/tasks':
+            self.mode = 1
+            return True
+        elif command == '/chat':
+            self.mode = 2
+            return True
+        elif command == '/kanban':
+            self.mode = 3
+            return True
+        elif command == '/sync':
+            self._load_todoist_tasks()
+            self._load_kanban_data()
+            self.messages.append(Message("Synced tasks & kanban", 'system'))
+            return True
+        elif command == '/weather':
+            self.weather = None
+            self.load_weather()
+            self.messages.append(Message("Weather refreshing...", 'system'))
+            return True
+        elif command == '/screenshot':
+            import subprocess
+            filename = f"/home/moltbot/dashboard-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png"
+            subprocess.run(['scrot', filename], capture_output=True)
+            self.messages.append(Message(f"Saved: {filename}", 'system'))
+            return True
+        elif command == '/restart':
+            self.messages.append(Message("Restarting...", 'system'))
+            import os, sys
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+        elif command in ['/quit', '/exit']:
+            pygame.quit()
+            import sys
+            sys.exit(0)
         return False
         
     def _fetch_sessions(self):
@@ -3513,8 +3549,10 @@ class DashboardApp:
     def _select_autocomplete_command(self):
         """Select the current autocomplete command"""
         commands = [
-            '/help', '/sessions', '/new', '/clear', '/status', 
-            '/size', '/compact', '/think', '/model'
+            '/help', '/sessions', '/new', '/clear', '/status', '/size',
+            '/home', '/tasks', '/chat', '/kanban',
+            '/sync', '/weather', '/screenshot', '/restart', '/quit',
+            '/compact', '/think', '/model'
         ]
         typed = self.chat_input.lower()
         matches = [c for c in commands if c.startswith(typed)]
@@ -3535,6 +3573,15 @@ class DashboardApp:
             ('/clear', 'Clear chat'),
             ('/status', 'Show status'),
             ('/size', 'Text size (s/m/l)'),
+            ('/home', 'Home screen'),
+            ('/tasks', 'Tasks screen'),
+            ('/chat', 'Chat screen'),
+            ('/kanban', 'Kanban screen'),
+            ('/sync', 'Refresh all'),
+            ('/weather', 'Update weather'),
+            ('/screenshot', 'Take screenshot'),
+            ('/restart', 'Restart app'),
+            ('/quit', 'Exit app'),
             ('/compact', 'Compact history'),
             ('/think', 'Toggle thinking'),
             ('/model', 'Change model'),

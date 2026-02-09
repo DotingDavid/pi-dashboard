@@ -4222,7 +4222,11 @@ class DashboardApp:
                 self.chat_select_start = self.chat_cursor
                 self.chat_select_end = self.chat_cursor
         elif event.key == pygame.K_RETURN:
-            if self.chat_input.strip():
+            # Check if in cascading menu submenu
+            if self.chat_input == '/' and getattr(self, 'cmd_in_submenu', False):
+                self._select_autocomplete_command()
+                return
+            elif self.chat_input.strip():
                 # If it's a command, just send it (let handler deal with it)
                 self.chat_send_message()
                 self.cmd_autocomplete_idx = 0
@@ -4248,13 +4252,23 @@ class DashboardApp:
             # Reset autocomplete selection
             self.cmd_autocomplete_idx = 0
         elif event.key == pygame.K_LEFT:
-            self.chat_cursor = max(0, self.chat_cursor - 1)
-            self.chat_select_start = self.chat_cursor
-            self.chat_select_end = self.chat_cursor
+            if self.chat_input == '/' and getattr(self, 'cmd_in_submenu', False):
+                # Exit submenu
+                self.cmd_in_submenu = False
+                self.cmd_autocomplete_idx = 0
+            else:
+                self.chat_cursor = max(0, self.chat_cursor - 1)
+                self.chat_select_start = self.chat_cursor
+                self.chat_select_end = self.chat_cursor
         elif event.key == pygame.K_RIGHT:
-            self.chat_cursor = min(len(self.chat_input), self.chat_cursor + 1)
-            self.chat_select_start = self.chat_cursor
-            self.chat_select_end = self.chat_cursor
+            if self.chat_input == '/':
+                # Enter submenu
+                self.cmd_in_submenu = True
+                self.cmd_autocomplete_idx = 0
+            else:
+                self.chat_cursor = min(len(self.chat_input), self.chat_cursor + 1)
+                self.chat_select_start = self.chat_cursor
+                self.chat_select_end = self.chat_cursor
         elif event.key == pygame.K_UP:
             # Autocomplete navigation or scroll
             if self.chat_input.startswith('/'):
@@ -4286,14 +4300,6 @@ class DashboardApp:
                     self.cmd_autocomplete_idx = min(7, getattr(self, 'cmd_autocomplete_idx', 0) + 1)
             else:
                 self.chat_scroll = max(0, self.chat_scroll - 1)
-        elif event.key == pygame.K_RIGHT and self.chat_input == '/':
-            # Enter submenu
-            self.cmd_in_submenu = True
-            self.cmd_autocomplete_idx = 0
-        elif event.key == pygame.K_LEFT and self.chat_input == '/':
-            # Exit submenu
-            self.cmd_in_submenu = False
-            self.cmd_autocomplete_idx = 0
         elif event.key == pygame.K_ESCAPE:
             self.chat_input = ""
             self.chat_cursor = 0

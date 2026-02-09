@@ -3437,15 +3437,6 @@ class DashboardApp:
                 break
             y = new_y
             
-        # Thinking indicator - animated dots (bottom right, out of way)
-        if self.chat_waiting:
-            think_x = SCREEN_WIDTH - 60
-            think_y = input_y - 20
-            for i in range(3):
-                phase = self.chat_anim * 4 + i * 0.5
-                bounce = abs(math.sin(phase)) * 5
-                pygame.draw.circle(self.screen, (100, 180, 255), (think_x + i * 12, int(think_y - bounce)), 4)
-            
         # Scroll indicator
         if self.chat_scroll > 0:
             scroll_text = f"^ {self.chat_scroll} more"
@@ -3454,6 +3445,15 @@ class DashboardApp:
             
         # Input area - modern glass style
         input_y = SCREEN_HEIGHT - 58
+        
+        # Thinking indicator - animated dots (bottom right, out of way)
+        if self.chat_waiting:
+            think_x = SCREEN_WIDTH - 60
+            think_y = input_y - 20
+            for i in range(3):
+                phase = self.chat_anim * 4 + i * 0.5
+                bounce = abs(math.sin(phase)) * 5
+                pygame.draw.circle(self.screen, (100, 180, 255), (think_x + i * 12, int(think_y - bounce)), 4)
         
         # Input container with glow when focused
         input_surf = pygame.Surface((SCREEN_WIDTH - 20, 48), pygame.SRCALPHA)

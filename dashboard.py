@@ -1011,12 +1011,12 @@ class DashboardApp:
                 'category': 'safe'
             },
             {
-                'label': '-',
-                'desc': 'Empty slot',
-                'cmd': '__none__',
+                'label': 'Consciousness',
+                'desc': 'TUI with consciousness session',
+                'cmd': '__launch_consciousness__',
                 'icon': '5',
-                'color': (60, 65, 80),
-                'category': 'disabled'
+                'color': (180, 100, 255),
+                'category': 'safe'
             },
             {
                 'label': 'Update System',
@@ -1081,6 +1081,11 @@ class DashboardApp:
             # Special handling for launching TUI
             if cmd['cmd'] == '__launch_tui__':
                 subprocess.Popen(['lxterminal', '-e', 'openclaw', 'tui'])
+                return
+
+            # Special handling for consciousness session
+            if cmd['cmd'] == '__launch_consciousness__':
+                subprocess.Popen(['lxterminal', '-e', 'openclaw', 'tui', '--session', 'consciousness'])
                 return
 
             # Disabled slots do nothing

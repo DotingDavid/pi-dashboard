@@ -3394,18 +3394,46 @@ class DashboardApp:
             pass
     
     def draw_chat(self):
-        """Draw chat panel"""
+        """Draw chat panel - WOW Edition"""
+        import math
+        
+        if not hasattr(self, 'chat_anim'):
+            self.chat_anim = 0
+        self.chat_anim += 0.03
+        
         y_start = 38
         
-        # Session indicator at top
+        # Animated gradient background
+        for y in range(y_start, SCREEN_HEIGHT):
+            progress = (y - y_start) / (SCREEN_HEIGHT - y_start)
+            wave = math.sin(self.chat_anim * 0.5 + progress * 2) * 3
+            r = int(16 + wave)
+            g = int(20 + progress * 4 + wave)
+            b = int(32 + progress * 8)
+            pygame.draw.line(self.screen, (max(0,r), max(0,g), min(50,b)), (0, y), (SCREEN_WIDTH, y))
+        
+        # Session indicator with glow
         display_name = self.settings.session_renames.get(self.settings.session_key, self.settings.session_key)
         session_text = f"Session: {display_name}"
-        session_surf = self.fonts['status'].render(session_text[:50], True, C['text_dim'])
-        self.screen.blit(session_surf, (15, y_start + 4))
-        y_start += 24
+        
+        # Glass header bar
+        header_surf = pygame.Surface((SCREEN_WIDTH - 20, 28), pygame.SRCALPHA)
+        header_surf.fill((30, 40, 60, 150))
+        self.screen.blit(header_surf, (10, y_start))
+        pygame.draw.rect(self.screen, (60, 80, 120), (10, y_start, SCREEN_WIDTH - 20, 28), width=1, border_radius=8)
+        
+        session_surf = self.fonts['status'].render(session_text[:50], True, (140, 170, 220))
+        self.screen.blit(session_surf, (20, y_start + 7))
+        
+        # Online indicator dot
+        pulse = 0.7 + 0.3 * math.sin(self.chat_anim * 3)
+        dot_color = (int(80 * pulse + 40), int(200 * pulse + 50), int(120 * pulse + 40))
+        pygame.draw.circle(self.screen, dot_color, (SCREEN_WIDTH - 30, y_start + 14), 5)
+        
+        y_start += 34
         
         # Messages
-        msg_bottom = SCREEN_HEIGHT - 60
+        msg_bottom = SCREEN_HEIGHT - 65
         messages = list(self.messages)
         
         if self.chat_scroll > 0 and len(messages) > self.chat_scroll:
@@ -3418,24 +3446,32 @@ class DashboardApp:
                 break
             y = new_y
             
-        # Thinking indicator
+        # Thinking indicator - animated dots
         if self.chat_waiting:
-            dots = "●" * (int(time.time() * 2) % 3 + 1)
-            dots_surf = self.fonts['msg'].render(dots, True, C['accent'])
-            self.screen.blit(dots_surf, (14, msg_bottom - 20))
+            think_x = 20
+            for i in range(3):
+                phase = self.chat_anim * 4 + i * 0.5
+                bounce = abs(math.sin(phase)) * 6
+                alpha = int(150 + 100 * math.sin(phase))
+                pygame.draw.circle(self.screen, (100, 180, 255), (think_x + i * 12, int(msg_bottom - 15 - bounce)), 4)
             
         # Scroll indicator
         if self.chat_scroll > 0:
-            scroll_text = f"↑ {self.chat_scroll} older"
-            scroll_surf = self.fonts['status'].render(scroll_text, True, C['warning'])
-            self.screen.blit(scroll_surf, (SCREEN_WIDTH - scroll_surf.get_width() - 10, y_start + 4))
+            scroll_text = f"^ {self.chat_scroll} more"
+            scroll_surf = self.fonts['status'].render(scroll_text, True, (255, 200, 100))
+            self.screen.blit(scroll_surf, (SCREEN_WIDTH - scroll_surf.get_width() - 15, y_start - 26))
             
-        # Input
-        input_y = SCREEN_HEIGHT - 55
-        pygame.draw.line(self.screen, C['border'], (0, input_y), (SCREEN_WIDTH, input_y), 1)
+        # Input area - modern glass style
+        input_y = SCREEN_HEIGHT - 58
         
-        box = (12, input_y + 8, SCREEN_WIDTH - 24, 42)
-        pygame.draw.rect(self.screen, C['bg_input'], box, border_radius=10)
+        # Input container with glow when focused
+        input_surf = pygame.Surface((SCREEN_WIDTH - 20, 48), pygame.SRCALPHA)
+        input_surf.fill((25, 35, 55, 200))
+        self.screen.blit(input_surf, (10, input_y))
+        
+        # Border with accent when typing
+        border_color = (80, 140, 220) if self.chat_input else (50, 65, 90)
+        pygame.draw.rect(self.screen, border_color, (10, input_y, SCREEN_WIDTH - 20, 48), width=1, border_radius=12)
         
         # Input with scrolling
         display_text = self.chat_input
@@ -3461,15 +3497,17 @@ class DashboardApp:
                     display_text = display_text[offset:]
                     cursor_pos = cursor_pos - offset
         
-        display = display_text or ("..." if self.chat_waiting else "/help for commands")
-        color = C['text'] if self.chat_input else C['text_muted']
+        display = display_text or ("..." if self.chat_waiting else "Type a message...")
+        color = (220, 230, 245) if self.chat_input else (100, 115, 140)
         surf = self.fonts['input'].render(display, True, color)
-        self.screen.blit(surf, (16, input_y + 15))
+        self.screen.blit(surf, (22, input_y + 14))
         
-        # Cursor
-        if self.chat_input and int(time.time() * 2) % 2 and not self.chat_waiting:
-            cx = 16 + self.fonts['input'].size(display_text[:cursor_pos])[0]
-            pygame.draw.rect(self.screen, C['cursor'], (cx, input_y + 12, 2, 20))
+        # Animated cursor
+        if self.chat_input and not self.chat_waiting:
+            cursor_blink = math.sin(self.chat_anim * 5) > 0
+            if cursor_blink:
+                cx = 22 + self.fonts['input'].size(display_text[:cursor_pos])[0]
+                pygame.draw.rect(self.screen, (100, 180, 255), (cx, input_y + 12, 2, 22), border_radius=1)
             
         # Menu overlay
         if self.chat_menu_open:

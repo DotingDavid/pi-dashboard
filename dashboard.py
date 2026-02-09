@@ -1081,11 +1081,21 @@ class DashboardApp:
             # Special handling for launching TUI
             if cmd['cmd'] == '__launch_tui__':
                 subprocess.Popen(['lxterminal', '-e', 'openclaw', 'tui'])
+                self.command_selection = -1  # Clear selection
                 return
 
             # Special handling for consciousness session
             if cmd['cmd'] == '__launch_consciousness__':
-                subprocess.Popen(['lxterminal', '-e', 'openclaw', 'tui', '--session', 'consciousness'])
+                # Launch terminal, then fullscreen and focus it
+                subprocess.Popen(['lxterminal', '-T', 'Consciousness', '-e', 'openclaw', 'tui', '--session', 'consciousness'])
+                self.command_selection = -1  # Clear selection
+                # Give it time to open, then fullscreen and focus
+                def focus_terminal():
+                    import time
+                    time.sleep(0.5)
+                    subprocess.run(['wmctrl', '-a', 'Consciousness'])
+                    subprocess.run(['wmctrl', '-r', 'Consciousness', '-b', 'add,fullscreen'])
+                threading.Thread(target=focus_terminal, daemon=True).start()
                 return
 
             # Disabled slots do nothing

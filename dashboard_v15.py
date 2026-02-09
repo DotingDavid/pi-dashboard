@@ -3636,7 +3636,8 @@ class DashboardApp:
             popup_x = 15
             popup_y = input_y - popup_h - 5
             
-            # Draw solid background directly on screen
+            # Draw solid background - fill entire rect first
+            pygame.draw.rect(self.screen, (25, 32, 45), (popup_x - 2, popup_y - 2, popup_w + 4, popup_h + 4))
             pygame.draw.rect(self.screen, (25, 32, 45), (popup_x, popup_y, popup_w, popup_h), border_radius=8)
             pygame.draw.rect(self.screen, (60, 90, 130), (popup_x, popup_y, popup_w, popup_h), width=1, border_radius=8)
             
@@ -3672,7 +3673,8 @@ class DashboardApp:
         left_x = 15
         left_y = input_y - left_h - 5
         
-        # Draw solid background directly on screen
+        # Draw solid background - fill entire rect first
+        pygame.draw.rect(self.screen, (25, 32, 45), (left_x - 2, left_y - 2, left_w + 4, left_h + 4))
         pygame.draw.rect(self.screen, (25, 32, 45), (left_x, left_y, left_w, left_h), border_radius=8)
         pygame.draw.rect(self.screen, (60, 90, 130), (left_x, left_y, left_w, left_h), width=1, border_radius=8)
         
@@ -3702,7 +3704,8 @@ class DashboardApp:
         right_x = left_x + left_w + 5
         right_y = input_y - right_h - 5
         
-        # Draw solid background directly on screen
+        # Draw solid background - fill entire rect first
+        pygame.draw.rect(self.screen, (25, 32, 45), (right_x - 2, right_y - 2, right_w + 4, right_h + 4))
         pygame.draw.rect(self.screen, (25, 32, 45), (right_x, right_y, right_w, right_h), border_radius=8)
         pygame.draw.rect(self.screen, cat_color, (right_x, right_y, right_w, right_h), width=1, border_radius=8)
         

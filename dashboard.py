@@ -3490,7 +3490,7 @@ class DashboardApp:
                     cursor_pos = cursor_pos - offset
         
         is_focused = getattr(self, 'chat_focused', False)
-        display = display_text or ("..." if self.chat_waiting else ("" if is_focused else "Type a message..."))
+        display = display_text or ("..." if self.chat_waiting else ("" if is_focused else "/help for commands"))
         color = (220, 230, 245) if (self.chat_input or is_focused) else (100, 115, 140)
         surf = self.fonts['input'].render(display, True, color)
         self.screen.blit(surf, (22, input_y + 14))
@@ -3501,11 +3501,85 @@ class DashboardApp:
             if cursor_blink:
                 cx = 22 + self.fonts['input'].size(display_text[:cursor_pos])[0]
                 pygame.draw.rect(self.screen, (100, 180, 255), (cx, input_y + 12, 2, 22), border_radius=1)
+        
+        # Command autocomplete popup
+        if self.chat_input.startswith('/') and not self.chat_waiting:
+            self._draw_command_autocomplete(input_y)
             
         # Menu overlay
         if self.chat_menu_open:
             self._draw_chat_menu()
             
+    def _select_autocomplete_command(self):
+        """Select the current autocomplete command"""
+        commands = [
+            '/help', '/sessions', '/new', '/clear', '/status', 
+            '/size', '/compact', '/think', '/model'
+        ]
+        typed = self.chat_input.lower()
+        matches = [c for c in commands if c.startswith(typed)]
+        
+        if matches:
+            idx = getattr(self, 'cmd_autocomplete_idx', 0)
+            idx = min(idx, len(matches) - 1)
+            self.chat_input = matches[idx] + ' '
+            self.chat_cursor = len(self.chat_input)
+            self.cmd_autocomplete_idx = 0
+    
+    def _draw_command_autocomplete(self, input_y):
+        """Draw command autocomplete popup above input"""
+        commands = [
+            ('/help', 'Show commands'),
+            ('/sessions', 'Switch session'),
+            ('/new', 'New session'),
+            ('/clear', 'Clear chat'),
+            ('/status', 'Show status'),
+            ('/size', 'Text size (s/m/l)'),
+            ('/compact', 'Compact history'),
+            ('/think', 'Toggle thinking'),
+            ('/model', 'Change model'),
+        ]
+        
+        # Filter based on what's typed
+        typed = self.chat_input.lower()
+        matches = [c for c in commands if c[0].startswith(typed)]
+        
+        if not matches:
+            return
+        
+        # Initialize selection
+        if not hasattr(self, 'cmd_autocomplete_idx'):
+            self.cmd_autocomplete_idx = 0
+        self.cmd_autocomplete_idx = min(self.cmd_autocomplete_idx, len(matches) - 1)
+        
+        # Popup dimensions
+        popup_w = 200
+        popup_h = min(len(matches) * 28 + 8, 150)
+        popup_x = 15
+        popup_y = input_y - popup_h - 5
+        
+        # Draw popup background
+        popup_surf = pygame.Surface((popup_w, popup_h), pygame.SRCALPHA)
+        popup_surf.fill((30, 40, 55, 240))
+        self.screen.blit(popup_surf, (popup_x, popup_y))
+        pygame.draw.rect(self.screen, (70, 100, 150), (popup_x, popup_y, popup_w, popup_h), width=1, border_radius=8)
+        
+        # Draw commands
+        y = popup_y + 4
+        for i, (cmd, desc) in enumerate(matches[:5]):
+            is_selected = (i == self.cmd_autocomplete_idx)
+            
+            if is_selected:
+                pygame.draw.rect(self.screen, (60, 90, 140), (popup_x + 4, y, popup_w - 8, 26), border_radius=4)
+            
+            cmd_surf = self.fonts['status'].render(cmd, True, (150, 200, 255) if is_selected else (120, 150, 200))
+            self.screen.blit(cmd_surf, (popup_x + 10, y + 5))
+            
+            desc_surf = self.fonts['status'].render(desc, True, (140, 150, 170) if is_selected else (90, 100, 120))
+            self.screen.blit(desc_surf, (popup_x + 75, y + 5))
+            
+            y += 28
+
     def _draw_bubble(self, msg, y, min_y):
         is_user = msg.role == 'user'
         is_system = msg.role == 'system'
@@ -4002,11 +4076,17 @@ class DashboardApp:
                 self.chat_select_start = self.chat_cursor
                 self.chat_select_end = self.chat_cursor
         elif event.key == pygame.K_RETURN:
-            if self.chat_input.strip():
+            # Check if autocomplete is active
+            if self.chat_input.startswith('/') and hasattr(self, 'cmd_autocomplete_idx'):
+                self._select_autocomplete_command()
+            elif self.chat_input.strip():
                 self.chat_send_message()
             else:
                 # Focus the input (show cursor)
                 self.chat_focused = True
+        elif event.key == pygame.K_TAB and self.chat_input.startswith('/'):
+            # Tab to select autocomplete
+            self._select_autocomplete_command()
         elif event.key == pygame.K_BACKSPACE:
             # Check for selection first
             sel_start = getattr(self, 'chat_select_start', self.chat_cursor)
@@ -4028,12 +4108,22 @@ class DashboardApp:
             self.chat_select_start = self.chat_cursor
             self.chat_select_end = self.chat_cursor
         elif event.key == pygame.K_UP:
-            # Scroll up through history
-            max_scroll = max(0, len(self.messages) - 3)
-            self.chat_scroll = min(self.chat_scroll + 1, max_scroll)
+            # Autocomplete navigation or scroll
+            if self.chat_input.startswith('/'):
+                if not hasattr(self, 'cmd_autocomplete_idx'):
+                    self.cmd_autocomplete_idx = 0
+                self.cmd_autocomplete_idx = max(0, self.cmd_autocomplete_idx - 1)
+            else:
+                max_scroll = max(0, len(self.messages) - 3)
+                self.chat_scroll = min(self.chat_scroll + 1, max_scroll)
         elif event.key == pygame.K_DOWN:
-            # Scroll down
-            self.chat_scroll = max(0, self.chat_scroll - 1)
+            # Autocomplete navigation or scroll
+            if self.chat_input.startswith('/'):
+                if not hasattr(self, 'cmd_autocomplete_idx'):
+                    self.cmd_autocomplete_idx = 0
+                self.cmd_autocomplete_idx = min(4, self.cmd_autocomplete_idx + 1)
+            else:
+                self.chat_scroll = max(0, self.chat_scroll - 1)
         elif event.key == pygame.K_ESCAPE:
             self.chat_input = ""
             self.chat_cursor = 0

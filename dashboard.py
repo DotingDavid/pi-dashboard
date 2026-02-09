@@ -2118,7 +2118,16 @@ class DashboardApp:
 
                 # Due pill on right side
                 if due and not is_selected:
-                    due_text = due[:6]
+                    # Format date nicely - handle ISO dates like 2026-02-08
+                    if len(due) >= 10 and due[4] == '-':
+                        try:
+                            from datetime import datetime
+                            dt = datetime.strptime(due[:10], '%Y-%m-%d')
+                            due_text = dt.strftime('%b %-d')  # "Feb 8"
+                        except:
+                            due_text = due[:6]
+                    else:
+                        due_text = due[:6]
                     due_bg = (180, 60, 60) if 'overdue' in due.lower() else (50, 55, 70)
                     due_surf = self.fonts['status'].render(due_text, True, (200, 205, 220))
                     pill_w = due_surf.get_width() + 12

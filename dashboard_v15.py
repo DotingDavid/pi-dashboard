@@ -1478,11 +1478,10 @@ class DashboardApp:
 
         # Temperature Gauge - same size now
         temp_c = stats['temp']
-        temp_f = int(temp_c * 9 / 5 + 32)
         temp_cx = panel_x + 55 + gauge_spacing * 2
         temp_pct = int(min(temp_c, 85) / 85 * 100)
         temp_color = (100, 220, 160) if temp_c < 55 else (240, 200, 80) if temp_c < 70 else (240, 100, 100)
-        self._draw_premium_gauge(temp_cx, gauge_y, gauge_r, temp_pct, "TEMP", temp_color, show_val=f"{temp_f}F")
+        self._draw_premium_gauge(temp_cx, gauge_y, gauge_r, temp_pct, "TEMP", temp_color, show_val=f"{temp_c}C")
 
         # ═══════════════════════════════════════════════════════════════
         # STATUS TILES - 2x2 Grid with icons

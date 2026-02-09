@@ -3549,10 +3549,9 @@ class DashboardApp:
     def _select_autocomplete_command(self):
         """Select the current autocomplete command"""
         commands = [
-            '/help', '/sessions', '/new', '/clear', '/status', '/size',
-            '/home', '/tasks', '/chat', '/kanban',
-            '/sync', '/weather', '/screenshot', '/restart', '/quit',
-            '/compact', '/think', '/model'
+            '/home', '/tasks', '/kanban', '/sync', '/weather', '/screenshot',
+            '/clear', '/sessions', '/new', '/status', '/help',
+            '/restart', '/quit', '/size', '/compact', '/think', '/model'
         ]
         typed = self.chat_input.lower()
         matches = [c for c in commands if c.startswith(typed)]
@@ -3560,31 +3559,32 @@ class DashboardApp:
         if matches:
             idx = getattr(self, 'cmd_autocomplete_idx', 0)
             idx = min(idx, len(matches) - 1)
-            self.chat_input = matches[idx] + ' '
+            selected_cmd = matches[idx]
+            self.chat_input = selected_cmd
             self.chat_cursor = len(self.chat_input)
             self.cmd_autocomplete_idx = 0
+            self.chat_focused = True
     
     def _draw_command_autocomplete(self, input_y):
         """Draw command autocomplete popup above input"""
         commands = [
-            ('/help', 'Show commands'),
-            ('/sessions', 'Switch session'),
-            ('/new', 'New session'),
-            ('/clear', 'Clear chat'),
-            ('/status', 'Show status'),
-            ('/size', 'Text size (s/m/l)'),
             ('/home', 'Home screen'),
             ('/tasks', 'Tasks screen'),
-            ('/chat', 'Chat screen'),
             ('/kanban', 'Kanban screen'),
             ('/sync', 'Refresh all'),
             ('/weather', 'Update weather'),
-            ('/screenshot', 'Take screenshot'),
+            ('/screenshot', 'Screenshot'),
+            ('/clear', 'Clear chat'),
+            ('/sessions', 'Switch session'),
+            ('/new', 'New session'),
+            ('/status', 'Show status'),
+            ('/help', 'Show help'),
             ('/restart', 'Restart app'),
             ('/quit', 'Exit app'),
-            ('/compact', 'Compact history'),
-            ('/think', 'Toggle thinking'),
-            ('/model', 'Change model'),
+            ('/size', 'Text size'),
+            ('/compact', 'Compact'),
+            ('/think', 'Thinking'),
+            ('/model', 'Model'),
         ]
         
         # Filter based on what's typed
@@ -3599,9 +3599,10 @@ class DashboardApp:
             self.cmd_autocomplete_idx = 0
         self.cmd_autocomplete_idx = min(self.cmd_autocomplete_idx, len(matches) - 1)
         
-        # Popup dimensions
-        popup_w = 200
-        popup_h = min(len(matches) * 28 + 8, 150)
+        # Popup dimensions - show up to 7 commands
+        max_show = 7
+        popup_w = 220
+        popup_h = min(len(matches), max_show) * 26 + 8
         popup_x = 15
         popup_y = input_y - popup_h - 5
         
@@ -3613,19 +3614,19 @@ class DashboardApp:
         
         # Draw commands
         y = popup_y + 4
-        for i, (cmd, desc) in enumerate(matches[:5]):
+        for i, (cmd, desc) in enumerate(matches[:max_show]):
             is_selected = (i == self.cmd_autocomplete_idx)
             
             if is_selected:
-                pygame.draw.rect(self.screen, (60, 90, 140), (popup_x + 4, y, popup_w - 8, 26), border_radius=4)
+                pygame.draw.rect(self.screen, (60, 90, 140), (popup_x + 4, y, popup_w - 8, 24), border_radius=4)
             
             cmd_surf = self.fonts['status'].render(cmd, True, (150, 200, 255) if is_selected else (120, 150, 200))
-            self.screen.blit(cmd_surf, (popup_x + 10, y + 5))
+            self.screen.blit(cmd_surf, (popup_x + 10, y + 4))
             
             desc_surf = self.fonts['status'].render(desc, True, (140, 150, 170) if is_selected else (90, 100, 120))
-            self.screen.blit(desc_surf, (popup_x + 75, y + 5))
+            self.screen.blit(desc_surf, (popup_x + 90, y + 4))
             
-            y += 28
+            y += 26
 
     def _draw_bubble(self, msg, y, min_y):
         is_user = msg.role == 'user'
@@ -4168,7 +4169,7 @@ class DashboardApp:
             # Autocomplete navigation or scroll
             if self.chat_input.startswith('/'):
                 self.cmd_autocomplete_idx = getattr(self, 'cmd_autocomplete_idx', 0)
-                self.cmd_autocomplete_idx = min(4, self.cmd_autocomplete_idx + 1)
+                self.cmd_autocomplete_idx = min(6, self.cmd_autocomplete_idx + 1)
             else:
                 self.chat_scroll = max(0, self.chat_scroll - 1)
         elif event.key == pygame.K_ESCAPE:

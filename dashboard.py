@@ -4123,17 +4123,17 @@ class DashboardApp:
                 self.chat_select_start = self.chat_cursor
                 self.chat_select_end = self.chat_cursor
         elif event.key == pygame.K_RETURN:
-            # Check if autocomplete is active
-            if self.chat_input.startswith('/') and hasattr(self, 'cmd_autocomplete_idx'):
-                self._select_autocomplete_command()
-            elif self.chat_input.strip():
+            if self.chat_input.strip():
+                # If it's a command, just send it (let handler deal with it)
                 self.chat_send_message()
+                self.cmd_autocomplete_idx = 0
             else:
                 # Focus the input (show cursor)
                 self.chat_focused = True
         elif event.key == pygame.K_TAB and self.chat_input.startswith('/'):
             # Tab to select autocomplete
             self._select_autocomplete_command()
+            return  # Don't process further
         elif event.key == pygame.K_BACKSPACE:
             # Check for selection first
             sel_start = getattr(self, 'chat_select_start', self.chat_cursor)
@@ -4146,6 +4146,8 @@ class DashboardApp:
             elif self.chat_cursor > 0:
                 self.chat_input = self.chat_input[:self.chat_cursor-1] + self.chat_input[self.chat_cursor:]
                 self.chat_cursor -= 1
+            # Reset autocomplete selection
+            self.cmd_autocomplete_idx = 0
         elif event.key == pygame.K_LEFT:
             self.chat_cursor = max(0, self.chat_cursor - 1)
             self.chat_select_start = self.chat_cursor
@@ -4157,8 +4159,7 @@ class DashboardApp:
         elif event.key == pygame.K_UP:
             # Autocomplete navigation or scroll
             if self.chat_input.startswith('/'):
-                if not hasattr(self, 'cmd_autocomplete_idx'):
-                    self.cmd_autocomplete_idx = 0
+                self.cmd_autocomplete_idx = getattr(self, 'cmd_autocomplete_idx', 0)
                 self.cmd_autocomplete_idx = max(0, self.cmd_autocomplete_idx - 1)
             else:
                 max_scroll = max(0, len(self.messages) - 3)
@@ -4166,8 +4167,7 @@ class DashboardApp:
         elif event.key == pygame.K_DOWN:
             # Autocomplete navigation or scroll
             if self.chat_input.startswith('/'):
-                if not hasattr(self, 'cmd_autocomplete_idx'):
-                    self.cmd_autocomplete_idx = 0
+                self.cmd_autocomplete_idx = getattr(self, 'cmd_autocomplete_idx', 0)
                 self.cmd_autocomplete_idx = min(4, self.cmd_autocomplete_idx + 1)
             else:
                 self.chat_scroll = max(0, self.chat_scroll - 1)
@@ -4194,6 +4194,8 @@ class DashboardApp:
             self.chat_cursor += 1
             self.chat_select_start = self.chat_cursor
             self.chat_select_end = self.chat_cursor
+            # Reset autocomplete selection when typing
+            self.cmd_autocomplete_idx = 0
             
     def _handle_rename_input(self, event):
         """Handle keyboard input for rename dialog"""

@@ -995,12 +995,12 @@ class DashboardApp:
                 'category': 'submenu'
             },
             {
-                'label': '-',
-                'desc': 'Empty slot',
-                'cmd': '__none__',
+                'label': 'OpenClaw TUI',
+                'desc': 'Launch terminal with TUI',
+                'cmd': '__launch_tui__',
                 'icon': '3',
-                'color': (60, 65, 80),
-                'category': 'disabled'
+                'color': (100, 180, 255),
+                'category': 'safe'
             },
             {
                 'label': 'Screen Off',
@@ -1076,6 +1076,11 @@ class DashboardApp:
             if cmd['cmd'] == '__system_menu__':
                 self.system_submenu_open = True
                 self.system_submenu_selection = 0
+                return
+
+            # Special handling for launching TUI
+            if cmd['cmd'] == '__launch_tui__':
+                subprocess.Popen(['lxterminal', '-e', 'openclaw', 'tui'])
                 return
 
             # Disabled slots do nothing

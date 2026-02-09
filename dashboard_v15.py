@@ -3636,9 +3636,8 @@ class DashboardApp:
             popup_x = 15
             popup_y = input_y - popup_h - 5
             
-            popup_surf = pygame.Surface((popup_w, popup_h))
-            popup_surf.fill((25, 32, 45))
-            self.screen.blit(popup_surf, (popup_x, popup_y))
+            # Draw solid background directly on screen
+            pygame.draw.rect(self.screen, (25, 32, 45), (popup_x, popup_y, popup_w, popup_h), border_radius=8)
             pygame.draw.rect(self.screen, (60, 90, 130), (popup_x, popup_y, popup_w, popup_h), width=1, border_radius=8)
             
             idx = getattr(self, 'cmd_autocomplete_idx', 0)
@@ -3673,9 +3672,8 @@ class DashboardApp:
         left_x = 15
         left_y = input_y - left_h - 5
         
-        left_surf = pygame.Surface((left_w, left_h))
-        left_surf.fill((25, 32, 45))
-        self.screen.blit(left_surf, (left_x, left_y))
+        # Draw solid background directly on screen
+        pygame.draw.rect(self.screen, (25, 32, 45), (left_x, left_y, left_w, left_h), border_radius=8)
         pygame.draw.rect(self.screen, (60, 90, 130), (left_x, left_y, left_w, left_h), width=1, border_radius=8)
         
         y = left_y + 4
@@ -3704,9 +3702,8 @@ class DashboardApp:
         right_x = left_x + left_w + 5
         right_y = input_y - right_h - 5
         
-        right_surf = pygame.Surface((right_w, right_h))
-        right_surf.fill((25, 32, 45))
-        self.screen.blit(right_surf, (right_x, right_y))
+        # Draw solid background directly on screen
+        pygame.draw.rect(self.screen, (25, 32, 45), (right_x, right_y, right_w, right_h), border_radius=8)
         pygame.draw.rect(self.screen, cat_color, (right_x, right_y, right_w, right_h), width=1, border_radius=8)
         
         cmd_idx = min(cmd_idx, len(cmds) - 1)

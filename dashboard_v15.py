@@ -473,8 +473,10 @@ class DashboardApp:
         self.task_edit_cursor = 0
         
     def delete_task(self):
-        """Delete the selected task"""
+        """Delete the selected task (local only, doesn't touch Todoist)"""
         if self.tasks and 0 <= self.task_selected < len(self.tasks):
+            # Note: This only removes from local view, not from Todoist
+            # Don't add to undo stack since it's not a Todoist action
             self.tasks.pop(self.task_selected)
             self.save_local_tasks()
             if self.task_selected >= len(self.tasks) and self.tasks:
@@ -526,7 +528,17 @@ class DashboardApp:
                         self.task_selected = len(self.tasks) - 1
     
     def undo_last_action(self):
-        """Undo the last task action"""
+        """Undo the last task action (with rate limiting)"""
+        # Rate limit: minimum 2 seconds between undos
+        if not hasattr(self, '_last_undo_time'):
+            self._last_undo_time = 0
+        
+        now = time.time()
+        if now - self._last_undo_time < 2.0:
+            return False  # Too fast, ignore
+        
+        self._last_undo_time = now
+        
         if not hasattr(self, 'undo_stack') or not self.undo_stack:
             return False
         
@@ -1335,15 +1347,15 @@ class DashboardApp:
         else:
             scale = 1.0
         
-        # Heart glow
-        glow_alpha = int(30 + 40 * (scale - 1.0) * 3)
+        # Heart glow (subtle)
+        glow_alpha = int(15 + 25 * (scale - 1.0) * 3)
         glow_surf = pygame.Surface((80, 80), pygame.SRCALPHA)
-        pygame.draw.circle(glow_surf, (255, 80, 100, glow_alpha), (40, 40), int(30 * scale))
+        pygame.draw.circle(glow_surf, (180, 60, 80, glow_alpha), (40, 40), int(30 * scale))
         self.screen.blit(glow_surf, (heart_x - 40, heart_y - 40))
         
-        # Draw heart shape
+        # Draw heart shape (muted color)
         s = int(18 * scale)
-        heart_color = (255, 70, 90)
+        heart_color = (160, 50, 70)
         # Left bump
         pygame.draw.circle(self.screen, heart_color, (heart_x - s//2, heart_y - s//4), s//2 + 2)
         # Right bump  
@@ -1356,15 +1368,13 @@ class DashboardApp:
         ]
         pygame.draw.polygon(self.screen, heart_color, points)
         
-        # Shine on heart
-        pygame.draw.circle(self.screen, (255, 150, 160), (heart_x - s//3, heart_y - s//3), 3)
+        # Shine on heart (subtle)
+        pygame.draw.circle(self.screen, (200, 100, 110), (heart_x - s//3, heart_y - s//3), 2)
         
-        # Calculate time to next heartbeat (every 30 min from top of hour)
-        now_ts = now.minute * 60 + now.second
-        if now_ts < 30 * 60:
-            next_hb = 30 * 60 - now_ts
-        else:
-            next_hb = 60 * 60 - now_ts
+        # Calculate time to next heartbeat (every 10 min)
+        mins_into_cycle = now.minute % 10
+        secs_into_cycle = mins_into_cycle * 60 + now.second
+        next_hb = 10 * 60 - secs_into_cycle
         
         mins_left = next_hb // 60
         secs_left = next_hb % 60
